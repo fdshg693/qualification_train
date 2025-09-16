@@ -1,4 +1,4 @@
-CREATE TABLE `questions` (
+CREATE TABLE IF NOT EXISTS `questions` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`genre` text NOT NULL,
 	`topic` text,

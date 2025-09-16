@@ -19,3 +19,15 @@ export const questions = sqliteTable('questions', {
 
 export type InsertQuestion = typeof questions.$inferInsert
 export type SelectQuestion = typeof questions.$inferSelect
+
+// ジャンル管理テーブル（管理画面から追加・編集）
+export const genres = sqliteTable('genres', {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    name: text('name').notNull().unique(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+        .notNull()
+        .default(sql`(strftime('%s','now')*1000)`),
+})
+
+export type InsertGenre = typeof genres.$inferInsert
+export type SelectGenre = typeof genres.$inferSelect

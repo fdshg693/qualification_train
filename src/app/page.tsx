@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import type { Question } from '@/lib/schema'
 import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
@@ -8,23 +8,36 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Toaster, useToast } from '@/components/ui/toaster'
 import { saveQuestion } from './actions'
-
-const GENRES = [
-    'IT基礎',
-    'ネットワーク',
-    'セキュリティ',
-    '数学',
-    '雑学',
-]
+type Genre = { id: number; name: string }
 
 export default function HomePage() {
-    const [genre, setGenre] = useState<string>('IT基礎')
+    const [genre, setGenre] = useState<string>('')
+    const [genres, setGenres] = useState<Genre[]>([])
     const [topic, setTopic] = useState<string>('')
     const [loading, setLoading] = useState(false)
     const [result, setResult] = useState<Question | null>(null)
     const [streaming, setStreaming] = useState(false)
     const { toast, message } = useToast()
     const [isSaving, startSaving] = useTransition()
+
+    useEffect(() => {
+        let canceled = false
+            ; (async () => {
+                try {
+                    const res = await fetch('/api/genres', { cache: 'no-store' })
+                    const data = (await res.json()) as Genre[]
+                    if (!canceled) {
+                        setGenres(data)
+                        if (!genre && data.length) setGenre(data[0].name)
+                    }
+                } catch (e) {
+                    console.error(e)
+                }
+            })()
+        return () => {
+            canceled = true
+        }
+    }, [])
 
     async function handleGenerate() {
         setLoading(true)
@@ -116,9 +129,10 @@ export default function HomePage() {
                 <label className="grid gap-2">
                     <span className="text-sm font-medium">ジャンル</span>
                     <Select value={genre} onChange={(e) => setGenre(e.target.value)}>
-                        {GENRES.map((g) => (
-                            <option key={g} value={g}>
-                                {g}
+                        {!genres.length && <option value="">ジャンル未登録</option>}
+                        {genres.map((g) => (
+                            <option key={g.id} value={g.name}>
+                                {g.name}
                             </option>
                         ))}
                     </Select>
@@ -132,13 +146,13 @@ export default function HomePage() {
                     />
                 </label>
                 <div>
-                    <Button onClick={handleGenerate} disabled={loading}>
+                    <Button onClick={handleGenerate} disabled={loading || !genre}>
                         {loading ? '生成中…' : '生成（モックAPI呼び出し）'}
                     </Button>
-                    <Button onClick={handleStream} disabled={streaming} variant="secondary" className="ml-3">
+                    <Button onClick={handleStream} disabled={streaming || !genre} variant="secondary" className="ml-3">
                         {streaming ? 'ストリーミング中…' : 'ストリーミング生成（NDJSON）'}
                     </Button>
-                    <Button onClick={handleSave} disabled={!result || isSaving} variant="outline" className="ml-3">
+                    <Button onClick={handleSave} disabled={!result || isSaving || !genre} variant="outline" className="ml-3">
                         {isSaving ? '保存中…' : '保存'}
                     </Button>
                 </div>

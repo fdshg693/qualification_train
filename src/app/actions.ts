@@ -1,8 +1,9 @@
 'use server'
 
 import { db } from '@/db/client'
-import { questions } from '@/db/schema'
+import { questions, genres } from '@/db/schema'
 import { eq, and, like } from 'drizzle-orm'
+import { revalidatePath } from 'next/cache'
 
 type SaveParams = {
     genre: string
@@ -39,4 +40,34 @@ export async function listQuestions(opts?: { genre?: string; q?: string }) {
         .where(where.length ? (and as any)(...where) : undefined)
         .orderBy(questions.createdAt)
     return rows
+}
+
+// ===== Genres (ジャンル) =====
+export async function listGenres() {
+    const rows = await db.select().from(genres).orderBy(genres.createdAt)
+    return rows
+}
+
+export async function createGenre(name: string) {
+    if (!name || !name.trim()) return
+    await db.insert(genres).values({ name: name.trim() })
+    revalidatePath('/admin/genres')
+    revalidatePath('/')
+    revalidatePath('/saved')
+}
+
+export async function updateGenre(id: number, name: string) {
+    if (!id || !name?.trim()) return
+    await db.update(genres).set({ name: name.trim() }).where(eq(genres.id, id))
+    revalidatePath('/admin/genres')
+    revalidatePath('/')
+    revalidatePath('/saved')
+}
+
+export async function deleteGenre(id: number) {
+    if (!id) return
+    await db.delete(genres).where(eq(genres.id, id))
+    revalidatePath('/admin/genres')
+    revalidatePath('/')
+    revalidatePath('/saved')
 }
