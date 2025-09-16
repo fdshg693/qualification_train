@@ -1,0 +1,33 @@
+# Node / build
+node_modules/
+.next/
+dist/
+build/
+
+# Environment (ignore local secret envs, but keep .env.example if present)
+.env.local
+.env.*.local
+.env
+!.env.example
+
+# SQLite DB files
+*.db
+sqlite.db
+
+# Drizzle migrations: commit these files so migrations are reproducible
+# (do NOT ignore drizzle/)
+
+# OS / Editor
+.DS_Store
+.vscode/
+.idea/
+
+# Logs, coverage
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+coverage/
+coverage-*
+
+# Misc
+*.log
