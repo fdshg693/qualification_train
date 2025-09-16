@@ -1,7 +1,7 @@
 'use server'
 
 import { db } from '@/db/client'
-import { questions, genres } from '@/db/schema'
+import { questions, genres, subgenres } from '@/db/schema'
 import { eq, and, like } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
@@ -70,4 +70,44 @@ export async function deleteGenre(id: number) {
     revalidatePath('/admin/genres')
     revalidatePath('/')
     revalidatePath('/saved')
+}
+
+export async function deleteQuestion(id: number) {
+    if (!id) return
+    await db.delete(questions).where(eq(questions.id, id))
+    // Revalidate pages that list questions
+    revalidatePath('/saved')
+    revalidatePath('/')
+}
+
+// ===== Subgenres (サブジャンル) =====
+export async function listSubgenres(opts?: { genreId?: number }) {
+    const { genreId } = opts ?? {}
+    const rows = await db
+        .select()
+        .from(subgenres)
+        .where(genreId ? eq(subgenres.genreId, genreId) : undefined as any)
+        .orderBy(subgenres.createdAt)
+    return rows
+}
+
+export async function createSubgenre(genreId: number, name: string) {
+    if (!genreId || !name?.trim()) return
+    await db.insert(subgenres).values({ genreId, name: name.trim() })
+    revalidatePath('/admin/genres')
+    revalidatePath('/')
+}
+
+export async function updateSubgenre(id: number, name: string) {
+    if (!id || !name?.trim()) return
+    await db.update(subgenres).set({ name: name.trim() }).where(eq(subgenres.id, id))
+    revalidatePath('/admin/genres')
+    revalidatePath('/')
+}
+
+export async function deleteSubgenre(id: number) {
+    if (!id) return
+    await db.delete(subgenres).where(eq(subgenres.id, id))
+    revalidatePath('/admin/genres')
+    revalidatePath('/')
 }

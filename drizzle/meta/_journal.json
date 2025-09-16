@@ -15,6 +15,13 @@
       "when": 1758032342541,
       "tag": "0001_nice_starjammers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1758037207133,
+      "tag": "0002_mature_marvel_zombies",
+      "breakpoints": true
     }
   ]
 }

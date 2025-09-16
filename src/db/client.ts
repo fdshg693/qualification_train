@@ -12,4 +12,6 @@ CREATE TABLE IF NOT EXISTS "genres" (
 );
 `)
 
+// subgenres テーブルは Drizzle のマイグレーションで作成します
+
 export const db = drizzle(sqlite)

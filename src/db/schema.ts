@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import { sql } from 'drizzle-orm'
 
 export const questions = sqliteTable('questions', {
@@ -31,3 +31,22 @@ export const genres = sqliteTable('genres', {
 
 export type InsertGenre = typeof genres.$inferInsert
 export type SelectGenre = typeof genres.$inferSelect
+
+// サブジャンル管理テーブル（ジャンルに紐づく）
+export const subgenres = sqliteTable(
+    'subgenres',
+    {
+        id: integer('id').primaryKey({ autoIncrement: true }),
+        genreId: integer('genre_id').notNull().references(() => genres.id, { onDelete: 'cascade' }),
+        name: text('name').notNull(),
+        createdAt: integer('created_at', { mode: 'timestamp_ms' })
+            .notNull()
+            .default(sql`(strftime('%s','now')*1000)`),
+    },
+    (t) => ({
+        subgenresGenreIdNameUnique: uniqueIndex('subgenres_genre_id_name_unique').on(t.genreId, t.name),
+    })
+)
+
+export type InsertSubgenre = typeof subgenres.$inferInsert
+export type SelectSubgenre = typeof subgenres.$inferSelect

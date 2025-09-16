@@ -9,14 +9,17 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Toaster, useToast } from '@/components/ui/toaster'
 import { saveQuestion } from './actions'
 type Genre = { id: number; name: string }
+type Subgenre = { id: number; genreId: number; name: string }
 
 export default function HomePage() {
     const [genre, setGenre] = useState<string>('')
     const [genres, setGenres] = useState<Genre[]>([])
+    const [subgenres, setSubgenres] = useState<Subgenre[]>([])
+    const [subgenre, setSubgenre] = useState<string>('')
     const [topic, setTopic] = useState<string>('')
     const [loading, setLoading] = useState(false)
     const [result, setResult] = useState<Question | null>(null)
-    const [streaming, setStreaming] = useState(false)
+
     const { toast, message } = useToast()
     const [isSaving, startSaving] = useTransition()
 
@@ -26,18 +29,52 @@ export default function HomePage() {
                 try {
                     const res = await fetch('/api/genres', { cache: 'no-store' })
                     const data = (await res.json()) as Genre[]
-                    if (!canceled) {
-                        setGenres(data)
-                        if (!genre && data.length) setGenre(data[0].name)
+                    if (canceled) return
+                    setGenres(data)
+                    const nextGenre = genre || (data[0]?.name ?? '')
+                    if (nextGenre) setGenre(nextGenre)
+                    // fetch subgenres for initial genre
+                    const g = data.find((x) => x.name === nextGenre)
+                    if (g) {
+                        const res2 = await fetch(`/api/subgenres?genreId=${g.id}`, { cache: 'no-store' })
+                        const subs = (await res2.json()) as Subgenre[]
+                        if (canceled) return
+                        setSubgenres(subs)
+                        setSubgenre(subs[0]?.name ?? '')
+                    } else {
+                        setSubgenres([])
+                        setSubgenre('')
                     }
                 } catch (e) {
                     console.error(e)
                 }
             })()
-        return () => {
-            canceled = true
-        }
+        return () => { canceled = true }
     }, [])
+
+    // Fetch subgenres when genre changes
+    useEffect(() => {
+        let canceled = false
+            ; (async () => {
+                try {
+                    if (!genre) {
+                        setSubgenres([])
+                        setSubgenre('')
+                        return
+                    }
+                    const g = genres.find((x) => x.name === genre)
+                    if (!g) return
+                    const res = await fetch(`/api/subgenres?genreId=${g.id}`, { cache: 'no-store' })
+                    const subs = (await res.json()) as Subgenre[]
+                    if (canceled) return
+                    setSubgenres(subs)
+                    setSubgenre((prev) => (prev && subs.some((s) => s.name === prev) ? prev : (subs[0]?.name ?? '')))
+                } catch (e) {
+                    console.error(e)
+                }
+            })()
+        return () => { canceled = true }
+    }, [genre, genres])
 
     async function handleGenerate() {
         setLoading(true)
@@ -46,7 +83,7 @@ export default function HomePage() {
             const res = await fetch('/api/questions/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ genre, topic }),
+                body: JSON.stringify({ subgenre: subgenre || undefined, topic }),
             })
             const data = await res.json()
             setResult(data as Question)
@@ -57,50 +94,7 @@ export default function HomePage() {
         }
     }
 
-    async function handleStream() {
-        setStreaming(true)
-        setResult({ question: '', choices: ['', '', '', ''], answerIndex: 0, explanation: '' })
-        try {
-            const res = await fetch('/api/questions/generate/stream', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ genre, topic }),
-            })
-            if (!res.body) throw new Error('No body')
-            const reader = res.body.getReader()
-            const decoder = new TextDecoder()
-            let buffer = ''
-            while (true) {
-                const { value, done } = await reader.read()
-                if (done) break
-                buffer += decoder.decode(value, { stream: true })
-                const lines = buffer.split('\n')
-                buffer = lines.pop() ?? ''
-                for (const line of lines) {
-                    if (!line.trim()) continue
-                    const evt = JSON.parse(line)
-                    if (evt.type === 'partial') {
-                        setResult((prev) => {
-                            if (!prev) return prev
-                            const next = { ...prev }
-                            if (evt.key === 'question') next.question = evt.value
-                            if (evt.key === 'choice' && typeof evt.index === 'number') {
-                                next.choices = [...next.choices]
-                                next.choices[evt.index] = evt.value
-                            }
-                            if (evt.key === 'answerIndex') next.answerIndex = evt.value
-                            if (evt.key === 'explanation') next.explanation = evt.value
-                            return next
-                        })
-                    }
-                }
-            }
-        } catch (e) {
-            console.error(e)
-        } finally {
-            setStreaming(false)
-        }
-    }
+    // ストリーミング機能は削除し、同期生成のみを使用します。
 
     function handleSave() {
         if (!result) return
@@ -138,6 +132,17 @@ export default function HomePage() {
                     </Select>
                 </label>
                 <label className="grid gap-2">
+                    <span className="text-sm font-medium">サブジャンル</span>
+                    <Select value={subgenre} onChange={(e) => setSubgenre(e.target.value)}>
+                        {!subgenres.length && <option value="">サブジャンル未登録</option>}
+                        {subgenres.map((s) => (
+                            <option key={s.id} value={s.name}>
+                                {s.name}
+                            </option>
+                        ))}
+                    </Select>
+                </label>
+                <label className="grid gap-2">
                     <span className="text-sm font-medium">サブトピック・出題範囲（任意）</span>
                     <Input
                         placeholder="例: OSI参照モデル, TCP/UDP"
@@ -149,9 +154,7 @@ export default function HomePage() {
                     <Button onClick={handleGenerate} disabled={loading || !genre}>
                         {loading ? '生成中…' : '生成（モックAPI呼び出し）'}
                     </Button>
-                    <Button onClick={handleStream} disabled={streaming || !genre} variant="secondary" className="ml-3">
-                        {streaming ? 'ストリーミング中…' : 'ストリーミング生成（NDJSON）'}
-                    </Button>
+                    {/* ストリーミング生成ボタンは廃止 */}
                     <Button onClick={handleSave} disabled={!result || isSaving || !genre} variant="outline" className="ml-3">
                         {isSaving ? '保存中…' : '保存'}
                     </Button>

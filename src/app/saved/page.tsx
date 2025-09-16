@@ -1,7 +1,8 @@
-import { listQuestions } from '../actions'
+import { listQuestions, deleteQuestion } from '../actions'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { ConfirmSubmitButton } from '@/components/ui/confirm-submit-button'
 import { Select } from '@/components/ui/select'
 import { db } from '@/db/client'
 import { genres } from '@/db/schema'
@@ -29,7 +30,20 @@ export default async function SavedPage({ searchParams }: { searchParams: { genr
                     <Card key={row.id}>
                         <CardHeader className="flex items-center justify-between">
                             <div className="font-medium">[{row.genre}] {row.question}</div>
-                            <div className="text-xs text-slate-500">ID: {row.id}</div>
+                            <div className="flex items-center gap-3">
+                                <div className="text-xs text-slate-500">ID: {row.id}</div>
+                                <form action={async (formData: FormData) => {
+                                    'use server'
+                                    const id = Number(formData.get('id'))
+                                    if (!id) return
+                                    await deleteQuestion(id)
+                                }} method="post">
+                                    <input type="hidden" name="id" value={row.id} />
+                                    <ConfirmSubmitButton>
+                                        削除
+                                    </ConfirmSubmitButton>
+                                </form>
+                            </div>
                         </CardHeader>
                         <CardContent className="text-sm">
                             <ol className="list-decimal pl-6 space-y-1">

@@ -7,8 +7,7 @@
 - フロント: Next.js(App Router) + TypeScript + Tailwind
 - UI: shadcn風の軽量コンポーネント（Button/Input/Select/Card/Toaster）
 - AI生成: Vercel AI SDK（ai + @ai-sdk/openai）
-	- 一括生成: `generateObject`
-	- 段階表示: `streamObject` を NDJSON にしてフロントへ配信
+	- 一括生成のみ: `generateObject`
 	- スキーマ: zod (`QuestionSchema`)
 	- OPENAI_API_KEY 未設定時はモックにフォールバック
 - 保存: Drizzle ORM + SQLite（ローカル `sqlite.db`）
@@ -22,8 +21,6 @@
 	- `/saved` 保存一覧＋検索（ジャンル/キーワード）
 - API
 	- `POST /api/questions/generate` 一括JSON（AI or モック）
-		- body: `{ genre?: string, topic?: string }`
-	- `POST /api/questions/generate/stream` NDJSONストリーム（AI or モック）
 		- body: `{ genre?: string, topic?: string }`
 
 ## セットアップ & 起動
@@ -56,7 +53,6 @@ npm run dev
 1) トップページ `/`
 	 - ジャンル（Select）とサブトピック（Input）を設定
 	 - 「生成（モックAPI呼び出し）」: 一括JSONで問題生成
-	 - 「ストリーミング生成（NDJSON）」: 部分的にプレビュー更新
 	 - 「保存」: 生成結果をDBへ保存（Toasterで結果表示）
 
 2) 保存一覧 `/saved`
@@ -69,7 +65,7 @@ npm run dev
 	- `src/app/page.tsx` フロント（生成/保存/ストリーム受信）
 	- `src/app/saved/page.tsx` 保存一覧・検索
 	- `src/app/api/questions/generate/route.ts` generateObject 実装
-	- `src/app/api/questions/generate/stream/route.ts` streamObject → NDJSON 変換実装
+	- （削除）`src/app/api/questions/generate/stream/route.ts` 旧ストリーミング実装
 	- `src/app/actions.ts` `saveQuestion`, `listQuestions`
 	- `src/db/schema.ts` Drizzle スキーマ（questions）
 	- `drizzle.config.ts` / `drizzle/` マイグレーション
