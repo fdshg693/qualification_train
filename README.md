@@ -1,90 +1,167 @@
-四択問題ジェネレーター＆保存アプリ（Next.js + Vercel AI SDK + Drizzle(SQLite) + shadcn風UI）
+四択問題ジェネレーター＆学習支援アプリ（Next.js + Vercel AI SDK + Drizzle(SQLite) + 軽量UI）
 
-2025-09-16 時点の実装状況と使い方をまとめます。最小で動かしつつ、あとから拡張しやすい構成です。
+2025-09-18 時点の最新実装ドキュメント。最小構成から拡張しやすい形を維持しつつ、ジャンル / サブジャンル管理、バッチ問題生成、チャット学習補助、ランダム練習などを備えています。
 
-## 実装概要
+## ✅ 機能サマリ
 
-- フロント: Next.js(App Router) + TypeScript + Tailwind
-- UI: shadcn風の軽量コンポーネント（Button/Input/Select/Card/Toaster）
-- AI生成: Vercel AI SDK（ai + @ai-sdk/openai）
-	- 一括生成のみ: `generateObject`
-	- スキーマ: zod (`QuestionSchema`)
-	- OPENAI_API_KEY 未設定時はモックにフォールバック
-- 保存: Drizzle ORM + SQLite（ローカル `sqlite.db`）
-	- サーバーアクション `saveQuestion()`
-	- 一覧/検索 `/saved`
+- 四択問題を AI もしくはモックで 1〜50 問まとめて生成
+- ジャンル / サブジャンル / 任意トピック指定で出題範囲を絞り込み
+- 問題の保存・検索（ジャンル / キーワード）・削除
+- ランダム 1 問練習ページ `/practice`
+- 学習サポートチャット（最大5問を文脈として会話 / ストリーミング表示）
+- ジャンル / サブジャンル管理 UI（追加・更新・削除）
+- OPENAI_API_KEY 未設定でもモック応答で一通り試行可能
 
-## ページ / API
+## 🧱 技術スタック
 
-- ページ
-	- `/` 生成フォーム＋プレビュー＋保存ボタン
-	- `/saved` 保存一覧＋検索（ジャンル/キーワード）
-- API
-	- `POST /api/questions/generate` 一括JSON（AI or モック）
-		- body: `{ genre?: string, topic?: string }`
+- Next.js 14 (App Router) + TypeScript + Tailwind CSS
+- Vercel AI SDK (`ai`, `@ai-sdk/openai`) でオブジェクト生成 & ストリーム
+- Drizzle ORM + better-sqlite3（ローカル `sqlite.db` を同梱）
+- UI: 独自の簡易 shadcn 風コンポーネント（Button / Input / Select / Card / Toaster）
+- バリデーション: zod
 
-## セットアップ & 起動
+## 📂 主なページ
 
-1) 依存関係インストール
+| パス | 役割 |
+|------|------|
+| `/` | 問題生成 / 保存 / チャット補助 |
+| `/saved` | 保存済み問題の検索・閲覧・削除 |
+| `/admin/genres` | ジャンル & サブジャンル管理 |
+| `/practice` | ランダム 1 問練習（保存済みプールから抽出） |
 
+## 🔌 API 一覧
+
+| メソッド & パス | 概要 | Body / Query | 備考 |
+|-----------------|------|-------------|------|
+| `POST /api/questions/generate` | 四択問題を batch 生成 (1〜50) | `{ subgenre?: string, topic?: string, count?: number }` | `count` 省略時 1。`subgenre` 未指定の場合はクライアント側でジャンル名を送ってジャンル全体を範囲化 |
+| `GET /api/genres` | ジャンル一覧 | なし | フロント初期ロードで使用 |
+| `GET /api/subgenres?genreId=NUMBER` | サブジャンル一覧 | `genreId` | ジャンル変更時に取得 |
+| `POST /api/chat` | 学習サポートチャット (ストリーミング `text/plain`) | `{ messages: {role,content}[], contextQuestions?: Question[] }` | 最大5問を system prompt に埋め込み |
+
+※ OPENAI_API_KEY 未設定時:
+* `/api/questions/generate` は決め打ちロジックでモック問題を生成
+* `/api/chat` は固定テキストのモックストリームを返却
+
+### リクエスト例: 問題生成 (5問)
+```bash
+curl -X POST http://localhost:3000/api/questions/generate \
+	-H 'Content-Type: application/json' \
+	-d '{"subgenre":"ネットワーク基礎","topic":"TCP ハンドシェイク","count":5}'
+```
+
+### レスポンス例（抜粋）
+```jsonc
+{
+	"questions": [
+		{
+			"question": "(1) TCPのコネクション確立で正しい手順はどれ?",
+			"choices": ["SYN → SYN-ACK → ACK", "...", "...", "..."],
+			"answerIndex": 0,
+			"explanation": "TCPは3-way handshake..."
+		}
+	]
+}
+```
+
+## 🧬 データモデル (Drizzle)
+
+| テーブル | 主なカラム | 用途 |
+|----------|------------|------|
+| `questions` | `genre`, `topic`, `question`, `choice0..3`, `answerIndex`, `explanation`, `createdAt` | 四択問題本体 |
+| `genres` | `name`, `createdAt` | ジャンル管理 |
+| `subgenres` | `genreId`, `name`, `createdAt` (複合Unique: genreId+name) | サブジャンル管理 |
+
+Zod スキーマ `QuestionSchema` (単一問題):
+```ts
+{ question: string, choices: [string,string,string,string], answerIndex: 0|1|2|3, explanation: string }
+```
+
+フロント/DB 保存時は `choices` を `choice0..3` に展開。生成後に内部で解答インデックス再シャッフルを行いランダム性を確保しています（`generate-questions.ts` 内 `normalizeQuestion`）。
+
+## 🛠 サーバーアクション
+
+- `saveQuestion()` 単一保存
+- `listQuestions()` 条件検索（ジャンル / 部分一致）
+- `deleteQuestion()` 削除
+- `getRandomQuestion()` ランダム 1 問（`/practice`）
+- `create/update/deleteGenre()` / `create/update/deleteSubgenre()`
+
+## 🖥 クライアント挙動ポイント
+
+- 生成時に既存プレビュー状態をリセット
+- ジャンル変更でサブジャンルを再フェッチ。未選択状態は "ジャンル全体" として扱うため空文字を送らずフロントで `(subgenre || genre)` を送信
+- 問題ごとの選択肢クリック → 1 回だけ解答判定ボタン
+- チャットは最後の user メッセージのみを `prompt` に使用し、最大 5 問を system に埋め込み
+
+## 🚀 セットアップ & 起動
+
+1. 依存関係インストール
 ```bash
 npm install
 ```
-
-2) （任意）OpenAI APIキーを設定（設定しない場合はモック動作）
-
+2. （任意）OpenAI API キーを設定（未設定ならモック）
 ```bash
-export OPENAI_API_KEY="sk-..."
+export OPENAI_API_KEY="sk-..."  # macOS/Linux の例
 ```
-
-3) 開発サーバー起動（http://localhost:3000）
-
-### ジャンル管理
-
-- 管理ページ: `/admin/genres`
-- ここでジャンルの追加・編集・削除が可能です。
-- トップページと保存一覧のジャンル選択はDBのジャンルから読み込みます。
-
+3. 開発サーバー
 ```bash
 npm run dev
+```
+4. 型チェック / Lint
+```bash
+npm run typecheck
+npm run lint
+```
 
-## 使い方
+## 🗃 マイグレーション (Drizzle)
 
-1) トップページ `/`
-	 - ジャンル（Select）とサブトピック（Input）を設定
-	 - 「生成（モックAPI呼び出し）」: 一括JSONで問題生成
-	 - 「保存」: 生成結果をDBへ保存（Toasterで結果表示）
+スキーマ変更時:
+```bash
+npm run db:generate   # 新しい SQL (drizzle/XXXX.sql) 生成
+npm run db:migrate    # sqlite.db に適用
+```
+既存 `sqlite.db` はリポジトリに同梱。破棄したい場合は削除後 `db:migrate` を再実行。
 
-2) 保存一覧 `/saved`
-	 - 保存済みの問題を一覧表示
-	 - 上部フォームでジャンル/キーワード検索
+## 🔐 環境変数
 
-## 技術詳細
+| 変数 | 必須 | 説明 |
+|------|------|------|
+| `OPENAI_API_KEY` | 任意 | 設定で本番 AI 利用。未設定時はモック生成/モックチャット |
 
-- 主要ディレクトリ/ファイル
-	- `src/app/page.tsx` フロント（生成/保存/ストリーム受信）
-	- `src/app/saved/page.tsx` 保存一覧・検索
-	- `src/app/api/questions/generate/route.ts` generateObject 実装
-	- （削除）`src/app/api/questions/generate/stream/route.ts` 旧ストリーミング実装
-	- `src/app/actions.ts` `saveQuestion`, `listQuestions`
-	- `src/db/schema.ts` Drizzle スキーマ（questions）
-	- `drizzle.config.ts` / `drizzle/` マイグレーション
+## 👀 ディレクトリ概要
 
-- スキーマ（zod）
-	- `QuestionSchema`: `{ question: string, choices: string[4], answerIndex: 0..3, explanation: string }`
+```
+src/
+	app/
+		page.tsx               # 生成 + 保存 + チャット
+		saved/page.tsx         # 保存一覧/検索/削除
+		practice/page.tsx      # ランダム練習
+		admin/genres/page.tsx  # ジャンル & サブジャンル管理
+		api/
+			questions/generate/route.ts  # バッチ生成
+			chat/route.ts                 # ストリーミングチャット
+			genres/route.ts               # ジャンル一覧
+			subgenres/route.ts            # サブジャンル一覧
+	components/
+		chat.tsx               # チャット UI
+		question-display.tsx   # 練習用 1 問表示
+		ui/*                   # 共通 UI
+	db/
+		schema.ts              # Drizzle テーブル定義
+		client.ts              # better-sqlite3 クライアント
+	lib/
+		generate-questions.ts  # バッチ生成ロジック / モック
+		schema.ts              # QuestionSchema (zod)
+```
 
-- モデル/プロバイダ
-	- `@ai-sdk/openai` の `gpt-4o-mini`（変更可）
+## 🔄 旧ストリーミング生成について
 
-## 開発メモ
+以前存在した `api/questions/generate/stream` は削除済み。現状は同期一括生成のみ（内部でバッチ → 失敗時シングルフォールバック）。再導入する場合は NDJSON エンベロープ形式を踏襲する想定。
 
-- AIキー未設定でもモックで一通り試せるようフォールバック実装
-- SQLiteファイルはリポジトリ直下の `sqlite.db`
-- Toasterは簡易版（必要に応じて shadcn/ui 公式の Toast に置換可能）
+## 🧪 テスト/検証（手動）
 
-## 今後の拡張候補
-
-- プロンプト強化（難易度、出題形式、誤答分布、禁止事項）
-- UIのリッチ化（Badge/Toast/Empty state/ページネーション）
-- 重複保存の防止、タグ管理、難易度/出典フィールド追加
-- Turso 連携（libSQL）と本番DB、マイグレーション運用
+1. API キー未設定で 5 問生成 → モック問題表示
+2. 1 問保存 → `/saved` に反映
+3. `/practice` でランダム取得（保存ゼロならメッセージ）
+4. チャットで質問 → ストリーム表示（モック or 本番）
+5. ジャンル追加 → トップページ Select に反映

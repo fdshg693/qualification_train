@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Toaster, useToast } from '@/components/ui/toaster'
 import { saveQuestion } from './actions'
+import { Chat } from '@/components/chat'
 type Genre = { id: number; name: string }
 type Subgenre = { id: number; genreId: number; name: string }
 
@@ -268,6 +269,10 @@ export default function HomePage() {
                         )
                     })}
                 </div>
+            </section>
+            <section>
+                <h2 className="text-xl font-semibold mb-2">学習サポートチャット</h2>
+                <Chat questions={results} />
             </section>
             <Toaster message={message} />
         </div>

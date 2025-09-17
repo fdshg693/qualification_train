@@ -1,68 +1,60 @@
-# Copilot instructions for this repo
+## Copilot instructions for this repo
 
-Purpose: Help AI coding agents be productive in this Next.js + Vercel AI SDK + Drizzle (SQLite) app by documenting architecture, workflows, and project-specific patterns.
+Purpose: Give AI agents the minimal, project-specific context to contribute safely and productively. Keep answers concrete; reuse existing patterns.
 
-## Overview
-- Stack: Next.js 14 App Router (TypeScript) + Tailwind, lightweight shadcn-style UI.
-- AI: Vercel AI SDK (`ai`, `@ai-sdk/openai`) for object generation and streaming.
-- DB: Drizzle ORM over `better-sqlite3` with a checked-in local `sqlite.db`.
-- Main flows:
-  - Generate a 4-choice question on `/` via API (JSON or NDJSON stream).
-  - Save questions locally; list/search them on `/saved`.
+### 1. Architecture Snapshot
+- Next.js 14 App Router + TypeScript + Tailwind (custom light shadcn-style UI under `src/components/ui`).
+- Data: Drizzle ORM over `better-sqlite3` (`sqlite.db` committed for simplicity).
+- AI: Vercel AI SDK for (a) batch question generation and (b) streaming tutor chat.
+- Core flows: generate 1–50 four‑choice questions, save/search, random practice, genre & subgenre CRUD, tutor chat referencing up to 5 questions.
 
-## Key files & responsibilities
-- Frontend
-  - `src/app/page.tsx`: generate (JSON), stream (NDJSON), save via server action; displays preview.
-  - `src/app/saved/page.tsx`: lists/sorts saved questions; simple GET form for filters.
-  - `src/components/ui/*`: minimal buttons/inputs/cards/toast.
-- API & actions
-  - `src/app/api/questions/generate/route.ts`: JSON generation with fallback when no OPENAI_API_KEY.
-  - `src/app/api/questions/generate/stream/route.ts`: streaming generation → NDJSON envelope (see below).
-  - `src/app/actions.ts`: server actions `saveQuestion`, `listQuestions` using Drizzle.
-- Data & config
-  - `src/lib/schema.ts`: zod `QuestionSchema` (single source of truth for shape).
-  - `src/db/schema.ts`: Drizzle SQLite schema (`questions` table, `choice0..3`).
-  - `src/db/client.ts`: `better-sqlite3` client bound to `sqlite.db`.
-  - `drizzle.config.ts` + `drizzle/`: migrations output location (initial migration present).
+### 2. Key Files (edit here, not ad‑hoc)
+- `src/lib/schema.ts`: `QuestionSchema` single source of truth for a Question object.
+- `src/lib/generate-questions.ts`: batch generation logic (+ mock + per‑question fallback + choice re-shuffle `normalizeQuestion`).
+- `src/app/api/questions/generate/route.ts`: POST batch generation (JSON only). Old streaming endpoint removed; reintroduce only if NDJSON envelope (see legacy note) is needed.
+- `src/app/api/chat/route.ts`: streaming plain text tutor chat; mock path when no `OPENAI_API_KEY`.
+- `src/app/actions.ts`: server actions (save/list/delete questions, random pick, genres/subgenres CRUD) + `revalidatePath` calls.
+- `src/db/schema.ts`: Drizzle tables `questions`, `genres`, `subgenres` (unique: `genreId+name`).
 
-## Data contracts and conventions
-- Question shape (keep in sync across API/UI):
-  - `QuestionSchema`: `{ question: string, choices: [string, string, string, string], answerIndex: 0..3, explanation: string }` in `src/lib/schema.ts`.
-- DB mapping:
-  - `choices[0..3]` ↔ columns `choice0..3`; `answerIndex` is an `integer` column.
-- Imports use TS path aliases (`@/lib/*`, `@/db/*`, `@/components/*`) defined in `tsconfig.json`.
-- Next.js config enables Server Actions with `bodySizeLimit: '2mb'` (`next.config.js`).
-- Copy/UI strings are Japanese; keep consistency for new UI text.
+### 3. Data & Contracts
+- Question shape: `{ question, choices[4], answerIndex 0..3, explanation }` via `QuestionSchema`.
+- DB mapping: `choices[i]` → `choice0..3`; keep answer index aligned after `normalizeQuestion` reshuffle.
+- When adding question fields: update `QuestionSchema`, DB schema + migration, save & list actions, and any UI renderers (`page.tsx`, `saved/page.tsx`, `question-display.tsx`).
 
-## AI generation patterns
-- JSON (one-shot):
-  - `generateObject({ model: openai('gpt-4.1'), system, prompt, schema: QuestionSchema })` → return `NextResponse.json(object)`.
-  - MUST support mock fallback when `OPENAI_API_KEY` is not set (see existing code for example copy).
-- Streaming (NDJSON):
-  - Use `streamObject({ model: openai('gpt-4o-mini'), system, prompt, schema: QuestionSchema })`.
-  - Response Content-Type: `application/x-ndjson; charset=utf-8`.
-  - Envelope expected by the client (`src/app/page.tsx`):
-    - `{"type":"start"}` once at start
-    - `{"type":"partial","key":"question","value":"..."}`
-    - `{"type":"partial","key":"choice","index":0..3,"value":"..."}` (emit as indices become available)
-    - `{"type":"partial","key":"answerIndex","value":0..3}`
-    - `{"type":"partial","key":"explanation","value":"..."}`
-    - `{"type":"final"}` once at end
-  - Preserve this wire format when extending streaming endpoints.
+### 4. AI Generation Rules
+- Always validate model output (batch path: manual `z.any()` then `QuestionsArraySchema.safeParse`; fallback per‑question with schema).
+- Limit batch size 1..50 (enforced in `generateQuestions`).
+- Mock mode triggers when `OPENAI_API_KEY` is absent; preserve deterministic style for local dev.
+- On new generation logic: keep the post‑process shuffle (maintains consistent UX anonymity of correct option position).
 
-## Server actions and querying
-- `saveQuestion(params)`: maps `choices` → `choice0..3`, writes to `questions`.
-- `listQuestions({ genre?, q? })`: builds `AND` of `eq(genre)` and `like(question, %q%)`; orders by `createdAt`.
-- If adding filters/columns: update `src/db/schema.ts`, action queries, and `/saved` UI. Also generate/commit a new migration in `drizzle/`.
+### 5. Chat Stream Pattern
+- Uses `streamText` → plain `text/plain` chunks (NOT NDJSON). Include up to 5 context questions inside the system prompt (see `contextSnippet`).
+- If extending (e.g., tool calls), keep mock branch simple and fast.
 
-## Dev workflows
-- Scripts (`package.json`): `dev` (Next dev), `build`, `start`, `lint`, `typecheck`.
-- Env: `OPENAI_API_KEY` optional; absence triggers a deterministic mock for both endpoints.
-- DB is local `sqlite.db` in repo root (checked-in). Ok to modify for development tasks.
+### 6. Genres / Subgenres
+- CRUD through server actions; each mutation revalidates `/admin/genres`, `/`, and sometimes `/saved`.
+- `subgenres` table cascades on genre delete. Maintain unique (genreId, name).
+- Frontend passes either a concrete subgenre or falls back to genre name for generation scope.
 
-## When implementing changes
-- Reuse `QuestionSchema` for any generation/validation to keep contract consistent.
-- Maintain the NDJSON streaming envelope; update `page.tsx` parsing only if strictly necessary.
-- Favor server actions for DB mutations/querying; keep DB access within server-side code.
-- Keep UI additions consistent with existing lightweight components under `src/components/ui/`.
-- Respect path aliases and strict TS settings; run `npm run typecheck` before committing.
+### 7. Conventions
+- Japanese copy throughout; match tone & language for new strings.
+- Use path aliases (`@/lib/*`, etc.)—do not use relative `../../` unless inside same feature cluster.
+- Keep DB access only in server actions / server routes. No direct client DB imports.
+- Prefer small, focused server actions over embedding logic in route handlers.
+
+### 8. Dev Workflow
+- Install: `npm install`; run: `npm run dev` (mock mode OK). Type safety: `npm run typecheck`; lint: `npm run lint`.
+- Schema change: update `src/db/schema.ts` → generate migration (`npm run db:generate`) → apply (`npm run db:migrate`). Commit both SQL + updated schema.
+- Do not reinvent streaming—reuse existing chat stream pattern.
+
+### 9. Legacy Note (Removed Feature)
+- Former NDJSON streaming question generation endpoint was removed. If restoring, reuse prior envelope: start, partial(question/choice/index/explanation), final.
+
+### 10. Safe Extension Checklist
+1. Touch the schema? Update zod + Drizzle + migrations + actions + UI.
+2. Add AI endpoint? Provide mock branch when no API key.
+3. Return arrays? Validate with zod before trusting.
+4. Mutate data? Revalidate affected routes.
+5. New UI text? Keep Japanese & concise.
+
+Keep this file succinct—add only proven patterns. Remove outdated guidance when behavior changes.
