@@ -2,6 +2,7 @@ import { getRandomQuestion } from '../actions'
 import { QuestionDisplay } from '@/components/question-display'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { RefreshButton } from '@/components/refresh-button'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,9 +13,7 @@ export default async function PracticePage() {
         <div className="space-y-6">
             <h1 className="text-2xl font-bold">ランダム練習</h1>
             <div className="flex gap-3">
-                <Link href="/practice" prefetch={false}>
-                    <Button variant="outline">別の問題</Button>
-                </Link>
+                <RefreshButton label="別の問題" />
                 <Link href="/saved" prefetch={false} className="text-sm text-slate-500 self-center hover:underline">
                     保存済み一覧へ戻る
                 </Link>

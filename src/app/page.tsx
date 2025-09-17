@@ -21,6 +21,7 @@ export default function HomePage() {
     const [topic, setTopic] = useState<string>('')
     const [loading, setLoading] = useState(false)
     const [count, setCount] = useState<number>(1)
+    const [model, setModel] = useState<string>('gpt-4.1')
     const [results, setResults] = useState<Question[]>([])
     // 各問題の解答状態
     const [selectedIndices, setSelectedIndices] = useState<Record<number, number | null>>({})
@@ -93,7 +94,7 @@ export default function HomePage() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 // サブジャンル未選択(空)の場合はジャンルを subgenre として送ることで、ジャンル全体からの出題を生成ロジックに伝える
-                body: JSON.stringify({ subgenre: (subgenre || genre) || undefined, topic, count }),
+                body: JSON.stringify({ subgenre: (subgenre || genre) || undefined, topic, count, model }),
             })
             const data = await res.json() as { questions?: Question[] }
             setResults(data.questions ?? [])
@@ -190,6 +191,15 @@ export default function HomePage() {
                 <label className="grid gap-2">
                     <span className="text-sm font-medium">生成数</span>
                     <Input type="number" min={1} max={50} value={count} onChange={(e) => setCount(Number(e.target.value) || 1)} />
+                </label>
+                <label className="grid gap-2">
+                    <span className="text-sm font-medium">モデル</span>
+                    <Select value={model} onChange={(e) => setModel(e.target.value)}>
+                        <option value="gpt-5">gpt-5</option>
+                        <option value="gpt-5-mini">gpt-5-mini</option>
+                        <option value="gpt-4.1">gpt-4.1</option>
+                        <option value="gpt40">gpt40</option>
+                    </Select>
                 </label>
                 <div className="flex items-center gap-3 mt-2">
                     <Button onClick={handleGenerate} disabled={loading || !genre}>

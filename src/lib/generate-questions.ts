@@ -10,6 +10,7 @@ export type GenerateParams = {
     subgenre?: string
     topic?: string
     count: number // desired number of questions (1..50 reasonable)
+    model?: string
 }
 
 // Utility to shuffle choices and randomize answerIndex similar to existing single logic
@@ -31,6 +32,8 @@ function normalizeQuestion(q: Question): Question {
 export async function generateQuestions(params: GenerateParams): Promise<Question[]> {
     const { subgenre, topic } = params
     const count = Math.max(1, Math.min(50, Math.floor(params.count)))
+    const allowedModels = ['gpt-5', 'gpt-5-mini', 'gpt-4.1', 'gpt40']
+    const model = allowedModels.includes(params.model ?? '') ? (params.model as string) : 'gpt-4.1'
     const apiKey = process.env.OPENAI_API_KEY
 
     if (!apiKey) {
@@ -63,7 +66,7 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
     // We will call model per question if array attempt fails, for robustness
     try {
         const { object } = await generateObject({
-            model: openai('gpt-4.1'),
+            model: openai(model),
             system,
             prompt: user,
             // We validate as raw JSON string then parse to array of Question
@@ -89,7 +92,7 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
     for (let i = 0; i < count; i++) {
         try {
             const { object } = await generateObject({
-                model: openai('gpt-4.1'),
+                model: openai(model),
                 system: 'あなたは四択問題を厳密なJSONで1問だけ生成します。',
                 prompt: `${user}\n現在 ${i + 1} / ${count} 問目を生成。`,
                 schema: QuestionSchema,

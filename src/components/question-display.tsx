@@ -15,23 +15,35 @@ export function QuestionDisplay({ question, meta }: QuestionDisplayProps) {
     const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
     const [answered, setAnswered] = useState(false)
 
-    // シャッフルはクライアント側で表示用のみに行う（元データは不変）
-    // question が変わるたびに新しくシャッフル
-    const shuffled = useMemo(() => {
-        const arr = question.choices.map((c, i) => ({ text: c, originalIndex: i }))
-        // Fisher-Yates
-        for (let i = arr.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1))
-                ;[arr[i], arr[j]] = [arr[j], arr[i]]
-        }
-        return arr
-    }, [question])
+    // SSR と CSR の不一致を避けるため、初回はそのまま表示し、マウント後にシャッフル
+    type ChoiceItem = { text: string; originalIndex: number }
+    const original: ChoiceItem[] = useMemo(
+        () => question.choices.map((c, i) => ({ text: c, originalIndex: i })),
+        [question]
+    )
+    const [shuffled, setShuffled] = useState<ChoiceItem[] | null>(null)
 
     useEffect(() => {
         // 新しい問題表示時は状態リセット
         setSelectedIndex(null)
         setAnswered(false)
-    }, [question])
+
+        // クライアント側でのみシャッフル（Fisher-Yates）
+        const arr = [...original]
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1))
+                ;[arr[i], arr[j]] = [arr[j], arr[i]]
+        }
+        setShuffled(arr)
+    }, [question, original])
+
+    const items = shuffled ?? original // ハイドレーション時は original と一致させる
+
+    const isSelectedCorrect = useMemo(() => {
+        if (selectedIndex === null) return false
+        const selected = items[selectedIndex]
+        return selected?.originalIndex === question.answerIndex
+    }, [selectedIndex, items, question.answerIndex])
 
     return (
         <Card>
@@ -54,18 +66,18 @@ export function QuestionDisplay({ question, meta }: QuestionDisplayProps) {
                     </Button>
                     {answered && selectedIndex !== null && (
                         <span className="text-sm">
-                            {selectedIndex === question.answerIndex ? '正解です。' : '不正解です。'}
+                            {isSelectedCorrect ? '正解です。' : '不正解です。'}
                         </span>
                     )}
                 </div>
                 <ol className="list-decimal pl-6 space-y-1">
-                    {shuffled.map((item, i) => {
+                    {items.map((item, i) => {
                         const isSelected = selectedIndex === i
                         const isCorrect = answered && item.originalIndex === question.answerIndex
                         const isWrong = answered && isSelected && !isCorrect
                         return (
                             <li
-                                key={i}
+                                key={item.originalIndex}
                                 onClick={() => {
                                     if (answered) return
                                     setSelectedIndex(i)
