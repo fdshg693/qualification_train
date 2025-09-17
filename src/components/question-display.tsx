@@ -1,0 +1,97 @@
+"use client"
+
+import { useEffect, useMemo, useState } from 'react'
+import type { Question } from '@/lib/schema'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+
+export type QuestionDisplayProps = {
+    question: Question
+    // optional: show genre/topic meta
+    meta?: { genre?: string; topic?: string | null }
+}
+
+export function QuestionDisplay({ question, meta }: QuestionDisplayProps) {
+    const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
+    const [answered, setAnswered] = useState(false)
+
+    // シャッフルはクライアント側で表示用のみに行う（元データは不変）
+    // question が変わるたびに新しくシャッフル
+    const shuffled = useMemo(() => {
+        const arr = question.choices.map((c, i) => ({ text: c, originalIndex: i }))
+        // Fisher-Yates
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1))
+                ;[arr[i], arr[j]] = [arr[j], arr[i]]
+        }
+        return arr
+    }, [question])
+
+    useEffect(() => {
+        // 新しい問題表示時は状態リセット
+        setSelectedIndex(null)
+        setAnswered(false)
+    }, [question])
+
+    return (
+        <Card>
+            <CardContent className="pt-4 text-sm text-slate-800 space-y-3">
+                {meta && (
+                    <div className="text-xs text-slate-500 flex gap-2">
+                        {meta.genre && <span>ジャンル: {meta.genre}</span>}
+                        {meta.topic && <span>トピック: {meta.topic}</span>}
+                    </div>
+                )}
+                <p className="font-medium leading-relaxed">{question.question}</p>
+                <div className="flex items-center gap-2">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setAnswered(true)}
+                        disabled={answered || selectedIndex === null}
+                    >
+                        解答
+                    </Button>
+                    {answered && selectedIndex !== null && (
+                        <span className="text-sm">
+                            {selectedIndex === question.answerIndex ? '正解です。' : '不正解です。'}
+                        </span>
+                    )}
+                </div>
+                <ol className="list-decimal pl-6 space-y-1">
+                    {shuffled.map((item, i) => {
+                        const isSelected = selectedIndex === i
+                        const isCorrect = answered && item.originalIndex === question.answerIndex
+                        const isWrong = answered && isSelected && !isCorrect
+                        return (
+                            <li
+                                key={i}
+                                onClick={() => {
+                                    if (answered) return
+                                    setSelectedIndex(i)
+                                }}
+                                className={[
+                                    'cursor-pointer select-none rounded px-1 py-0.5',
+                                    isSelected && !answered ? 'bg-slate-200' : '',
+                                    isCorrect ? 'font-semibold bg-green-100' : '',
+                                    isWrong ? 'bg-red-100 line-through' : '',
+                                ].filter(Boolean).join(' ')}
+                            >
+                                {item.text}
+                                {answered && isCorrect && (
+                                    <span className="ml-2 inline-block rounded bg-green-100 text-green-800 text-xs px-2 py-0.5 align-middle">正解</span>
+                                )}
+                                {answered && isWrong && (
+                                    <span className="ml-2 inline-block rounded bg-red-100 text-red-800 text-xs px-2 py-0.5 align-middle">不正解</span>
+                                )}
+                            </li>
+                        )
+                    })}
+                </ol>
+                {answered && (
+                    <p className="text-slate-600">解説: {question.explanation}</p>
+                )}
+            </CardContent>
+        </Card>
+    )
+}

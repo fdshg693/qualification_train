@@ -2,7 +2,7 @@
 
 import { db } from '@/db/client'
 import { questions, genres, subgenres } from '@/db/schema'
-import { eq, and, like } from 'drizzle-orm'
+import { eq, and, like, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 type SaveParams = {
@@ -40,6 +40,24 @@ export async function listQuestions(opts?: { genre?: string; q?: string }) {
         .where(where.length ? (and as any)(...where) : undefined)
         .orderBy(questions.createdAt)
     return rows
+}
+
+// ランダムな1件の問題を取得（練習用）
+export async function getRandomQuestion() {
+    // SQLite の RANDOM() を利用し1件取得
+    const row = await db.select().from(questions).orderBy(sql`RANDOM()`).limit(1)
+    if (!row.length) return null
+    const q = row[0]
+    return {
+        id: q.id,
+        genre: q.genre,
+        topic: q.topic ?? undefined,
+        question: q.question,
+        choices: [q.choice0, q.choice1, q.choice2, q.choice3] as [string, string, string, string],
+        answerIndex: q.answerIndex,
+        explanation: q.explanation,
+        createdAt: q.createdAt,
+    }
 }
 
 // ===== Genres (ジャンル) =====
