@@ -56,7 +56,7 @@ export default function HomePage() {
                 }
             })()
         return () => { canceled = true }
-    }, [])
+    }, [genre])
 
     // Fetch subgenres when genre changes
     useEffect(() => {
@@ -151,9 +151,10 @@ export default function HomePage() {
     }
 
     return (
-        <div className="space-y-6">
-            <h1 className="text-2xl font-bold">四択問題ジェネレーター</h1>
-            <section className="grid gap-4">
+        <div className="flex flex-col h-screen max-h-screen">
+            <h1 className="text-2xl font-bold mb-4 shrink-0">四択問題ジェネレーター</h1>
+            {/* 生成フォーム */}
+            <section className="grid gap-4 mb-4 shrink-0">
                 <label className="grid gap-2">
                     <span className="text-sm font-medium">ジャンル</span>
                     <Select value={genre} onChange={(e) => setGenre(e.target.value)}>
@@ -199,81 +200,90 @@ export default function HomePage() {
                     </Button>
                 </div>
             </section>
-            <section>
-                <h2 className="text-xl font-semibold mb-2">プレビュー ({results.length}問)</h2>
-                <div className="space-y-4">
-                    {!results.length && <Card><CardContent className="text-sm text-slate-500">まだ生成していません</CardContent></Card>}
-                    {results.map((q, idx) => {
-                        const answered = answeredMap[idx] || false
-                        const selected = selectedIndices[idx] ?? null
-                        return (
-                            <Card key={idx}>
-                                <CardHeader className="flex flex-row items-start justify-between">
-                                    <div className="font-medium">{idx + 1}. {q.question}</div>
-                                    <div className="flex gap-2">
-                                        <Button size="sm" variant="outline" onClick={() => handleSaveOne(idx)} disabled={isSaving || !genre}>保存</Button>
-                                    </div>
-                                </CardHeader>
-                                <CardContent className="text-sm text-slate-800 space-y-2">
-                                    <div className="flex items-center gap-2">
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => setAnsweredMap((m) => ({ ...m, [idx]: true }))}
-                                            disabled={answered || selected === null}
-                                        >
-                                            解答
-                                        </Button>
-                                        {answered && selected !== null && (
-                                            <span className="text-sm">
-                                                {selected === q.answerIndex ? '正解です。' : '不正解です。'}
-                                            </span>
+            {/* 下段 2 カラム: 左=問題プレビュー, 右=チャット */}
+            {/* メイン 2 カラム領域 (ヘッダ+フォームを除いた残りの高さ) */}
+            <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0 overflow-hidden">
+                {/* 問題プレビュー列 */}
+                <section className="basis-1/2 flex flex-col min-h-0 overflow-hidden">
+                    <h2 className="text-xl font-semibold mb-2 shrink-0">プレビュー ({results.length}問)</h2>
+                    <div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-4 custom-scroll">
+                        {!results.length && <Card><CardContent className="text-sm text-slate-500">まだ生成していません</CardContent></Card>}
+                        {results.map((q, idx) => {
+                            const answered = answeredMap[idx] || false
+                            const selected = selectedIndices[idx] ?? null
+                            return (
+                                <Card key={idx}>
+                                    <CardHeader className="flex flex-row items-start justify-between">
+                                        <div className="font-medium">{idx + 1}. {q.question}</div>
+                                        <div className="flex gap-2">
+                                            <Button size="sm" variant="outline" onClick={() => handleSaveOne(idx)} disabled={isSaving || !genre}>保存</Button>
+                                        </div>
+                                    </CardHeader>
+                                    <CardContent className="text-sm text-slate-800 space-y-2">
+                                        <div className="flex items-center gap-2">
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => setAnsweredMap((m) => ({ ...m, [idx]: true }))}
+                                                disabled={answered || selected === null}
+                                            >
+                                                解答
+                                            </Button>
+                                            {answered && selected !== null && (
+                                                <span className="text-sm">
+                                                    {selected === q.answerIndex ? '正解です。' : '不正解です。'}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <ol className="list-decimal pl-6 space-y-1">
+                                            {q.choices.map((c, i) => {
+                                                const isSelected = selected === i
+                                                const isCorrect = answered && i === q.answerIndex
+                                                const isWrong = answered && isSelected && !isCorrect
+                                                return (
+                                                    <li
+                                                        key={i}
+                                                        onClick={() => {
+                                                            if (answered) return
+                                                            setSelectedIndices((s) => ({ ...s, [idx]: i }))
+                                                        }}
+                                                        className={[
+                                                            'cursor-pointer select-none rounded px-1 py-0.5',
+                                                            isSelected && !answered ? 'bg-slate-200' : '',
+                                                            isCorrect ? 'font-semibold bg-green-100' : '',
+                                                            isWrong ? 'bg-red-100 line-through' : '',
+                                                        ].filter(Boolean).join(' ')}
+                                                    >
+                                                        {c}
+                                                        {answered && isCorrect && (
+                                                            <span className="ml-2 inline-block rounded bg-green-100 text-green-800 text-xs px-2 py-0.5 align-middle">正解</span>
+                                                        )}
+                                                        {answered && isWrong && (
+                                                            <span className="ml-2 inline-block rounded bg-red-100 text-red-800 text-xs px-2 py-0.5 align-middle">不正解</span>
+                                                        )}
+                                                    </li>
+                                                )
+                                            })}
+                                        </ol>
+                                        {answered && (
+                                            <p className="text-slate-600">解説: {q.explanation}</p>
                                         )}
-                                    </div>
-                                    <ol className="list-decimal pl-6 space-y-1">
-                                        {q.choices.map((c, i) => {
-                                            const isSelected = selected === i
-                                            const isCorrect = answered && i === q.answerIndex
-                                            const isWrong = answered && isSelected && !isCorrect
-                                            return (
-                                                <li
-                                                    key={i}
-                                                    onClick={() => {
-                                                        if (answered) return
-                                                        setSelectedIndices((s) => ({ ...s, [idx]: i }))
-                                                    }}
-                                                    className={[
-                                                        'cursor-pointer select-none rounded px-1 py-0.5',
-                                                        isSelected && !answered ? 'bg-slate-200' : '',
-                                                        isCorrect ? 'font-semibold bg-green-100' : '',
-                                                        isWrong ? 'bg-red-100 line-through' : '',
-                                                    ].filter(Boolean).join(' ')}
-                                                >
-                                                    {c}
-                                                    {answered && isCorrect && (
-                                                        <span className="ml-2 inline-block rounded bg-green-100 text-green-800 text-xs px-2 py-0.5 align-middle">正解</span>
-                                                    )}
-                                                    {answered && isWrong && (
-                                                        <span className="ml-2 inline-block rounded bg-red-100 text-red-800 text-xs px-2 py-0.5 align-middle">不正解</span>
-                                                    )}
-                                                </li>
-                                            )
-                                        })}
-                                    </ol>
-                                    {answered && (
-                                        <p className="text-slate-600">解説: {q.explanation}</p>
-                                    )}
-                                </CardContent>
-                            </Card>
-                        )
-                    })}
-                </div>
-            </section>
-            <section>
-                <h2 className="text-xl font-semibold mb-2">学習サポートチャット</h2>
-                <Chat questions={results} />
-            </section>
+                                    </CardContent>
+                                </Card>
+                            )
+                        })}
+                    </div>
+                </section>
+                {/* チャット列 */}
+                <section className="basis-1/2 flex flex-col min-h-0 overflow-hidden">
+                    <h2 className="text-xl font-semibold mb-2 shrink-0">学習サポートチャット</h2>
+                    {/* チャットは独立スクロール。高さは残余領域内で max-h を制限しすぎないよう flex-1 */}
+                    <div className="flex-1 min-h-0">
+                        <Chat questions={results} fullHeight className="h-full max-h-full" />
+                    </div>
+                </section>
+            </div>
             <Toaster message={message} />
         </div>
     )

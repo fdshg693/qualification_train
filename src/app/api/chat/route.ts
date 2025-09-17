@@ -1,18 +1,18 @@
 import { NextResponse } from 'next/server'
 import { createOpenAI } from '@ai-sdk/openai'
-import { streamText } from 'ai'
+import { generateText } from 'ai'
 import { z } from 'zod'
 
 // Incoming body schema
 const BodySchema = z.object({
     messages: z.array(z.object({ role: z.enum(['user', 'assistant', 'system']), content: z.string() })).default([]),
-    // 現在生成済みの問題をコンテキストとして添付 (最大数を制限)
     contextQuestions: z.array(z.object({
         question: z.string(),
         choices: z.array(z.string()).length(4),
         answerIndex: z.number().int().min(0).max(3),
         explanation: z.string()
-    })).optional()
+    })).optional(),
+    model: z.string().optional() // gpt-5 | gpt-5-mini | gpt-4.1 | gpt-4o
 })
 
 export async function POST(req: Request) {
@@ -36,52 +36,26 @@ export async function POST(req: Request) {
         : baseSystem
 
     if (!apiKey) {
-        // Mock streaming: we will send a simple NDJSON-like text stream
-        const encoder = new TextEncoder()
-        const stream = new ReadableStream({
-            start(controller) {
-                const mock = '（モック応答）コンテキストを元にしたサンプル回答です。'
-                controller.enqueue(encoder.encode(mock))
-                controller.close()
-            }
-        })
-        return new Response(stream, {
-            headers: {
-                'Content-Type': 'text/plain; charset=utf-8',
-                'Cache-Control': 'no-cache'
-            }
-        })
+        return NextResponse.json({ answer: '（モック応答）コンテキストを元にしたサンプル回答です。' })
     }
 
     const openai = createOpenAI({ apiKey })
     const lastUser = [...body.messages].reverse().find(m => m.role === 'user')
     const prompt = lastUser?.content ?? ''
+    // モデルマッピング（存在しない場合はフォールバック）
+    const requested = body.model || 'gpt-4o'
+    const allowed = new Set(['gpt-5', 'gpt-5-mini', 'gpt-4.1', 'gpt-4o'])
+    const modelName = allowed.has(requested) ? requested : 'gpt-4o'
 
-    const { textStream } = await streamText({
-        model: openai('gpt-4o-mini'),
-        system: systemWithContext,
-        prompt
-    })
-
-    const encoder = new TextEncoder()
-    const stream = new ReadableStream({
-        async start(controller) {
-            try {
-                for await (const chunk of textStream) {
-                    controller.enqueue(encoder.encode(chunk))
-                }
-            } catch (e) {
-                controller.error(e)
-                return
-            }
-            controller.close()
-        }
-    })
-
-    return new Response(stream, {
-        headers: {
-            'Content-Type': 'text/plain; charset=utf-8',
-            'Cache-Control': 'no-cache'
-        }
-    })
+    try {
+        const result = await generateText({
+            model: openai(modelName as any),
+            system: systemWithContext,
+            prompt
+        })
+        return NextResponse.json({ answer: result.text })
+    } catch (e) {
+        console.error('Chat generation error', e)
+        return NextResponse.json({ error: '生成に失敗しました。' }, { status: 500 })
+    }
 }
