@@ -14,7 +14,7 @@
 
 ## 🧱 技術スタック
 
-- Next.js 14 (App Router) + TypeScript + Tailwind CSS
+- Next.js 15 (App Router) + TypeScript + Tailwind CSS
 - Vercel AI SDK (`ai`, `@ai-sdk/openai`) でオブジェクト生成 & ストリーム
 - Drizzle ORM + better-sqlite3（ローカル `sqlite.db` を同梱）
 - UI: 独自の簡易 shadcn 風コンポーネント（Button / Input / Select / Card / Toaster）
