@@ -6,11 +6,10 @@ export const questions = sqliteTable('questions', {
     genre: text('genre').notNull(),
     topic: text('topic'),
     question: text('question').notNull(),
-    choice0: text('choice0').notNull(),
-    choice1: text('choice1').notNull(),
-    choice2: text('choice2').notNull(),
-    choice3: text('choice3').notNull(),
-    answerIndex: integer('answer_index').notNull(),
+    // JSON.stringify(string[])
+    choicesJson: text('choices_json').notNull(),
+    // JSON.stringify(number[])
+    answersJson: text('answers_json').notNull(),
     explanation: text('explanation').notNull(),
     createdAt: integer('created_at', { mode: 'timestamp_ms' })
         .notNull()

@@ -14,12 +14,16 @@ export default async function SavedPage({ searchParams }: { searchParams?: Promi
     const sp = (await searchParams) ?? {}
     const data = await listQuestions({ genre: sp.genre, q: sp.q })
     const genreRows = await db.select().from(genres).orderBy(genres.createdAt)
-    const chatContext = data.map((row: any) => ({
-        question: row.question,
-        choices: [row.choice0, row.choice1, row.choice2, row.choice3] as [string, string, string, string],
-        answerIndex: row.answerIndex,
-        explanation: row.explanation,
-    }))
+    const chatContext = data.map((row: any) => {
+        const choices = JSON.parse(row.choicesJson) as string[]
+        const answers = JSON.parse(row.answersJson) as number[]
+        return ({
+            question: row.question,
+            choices: [choices[0], choices[1], choices[2], choices[3]] as [string, string, string, string],
+            answerIndexes: answers,
+            explanation: row.explanation,
+        })
+    })
     return (
         <div className="space-y-4">
             <h1 className="text-2xl font-bold">保存済みの問題</h1>
@@ -61,11 +65,15 @@ export default async function SavedPage({ searchParams }: { searchParams?: Promi
                             </CardHeader>
                             <CardContent className="text-sm">
                                 <ol className="list-decimal pl-6 space-y-1">
-                                    {[row.choice0, row.choice1, row.choice2, row.choice3].map((c, i) => (
-                                        <li key={i} className={i === row.answerIndex ? 'font-semibold' : ''}>
-                                            {c} {i === row.answerIndex && <span className="ml-2 text-xs text-green-700">正解</span>}
-                                        </li>
-                                    ))}
+                                    {(JSON.parse(row.choicesJson) as string[]).map((c: string, i: number) => {
+                                        const ans: number[] = JSON.parse(row.answersJson)
+                                        const isCorrect = ans.includes(i)
+                                        return (
+                                            <li key={i} className={isCorrect ? 'font-semibold' : ''}>
+                                                {c} {isCorrect && <span className="ml-2 text-xs text-green-700">正解</span>}
+                                            </li>
+                                        )
+                                    })}
                                 </ol>
                                 <p className="text-slate-600 mt-2">解説: {row.explanation}</p>
                             </CardContent>

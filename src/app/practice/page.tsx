@@ -29,7 +29,7 @@ export default async function PracticePage() {
                             question={{
                                 question: q.question,
                                 choices: q.choices,
-                                answerIndex: q.answerIndex,
+                                answerIndexes: q.answerIndexes ?? [],
                                 explanation: q.explanation,
                             }}
                             meta={{ genre: q.genre, topic: q.topic ?? undefined }}
@@ -40,7 +40,7 @@ export default async function PracticePage() {
                             questions={[{
                                 question: q.question,
                                 choices: q.choices,
-                                answerIndex: q.answerIndex,
+                                answerIndexes: q.answerIndexes ?? [],
                                 explanation: q.explanation,
                             }]}
                             title="AIチャット"

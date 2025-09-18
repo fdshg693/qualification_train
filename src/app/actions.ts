@@ -10,7 +10,7 @@ type SaveParams = {
     topic?: string
     question: string
     choices: [string, string, string, string]
-    answerIndex: number
+    answerIndexes: number[]
     explanation: string
 }
 
@@ -19,11 +19,8 @@ export async function saveQuestion(params: SaveParams) {
         genre: params.genre,
         topic: params.topic ?? null,
         question: params.question,
-        choice0: params.choices[0],
-        choice1: params.choices[1],
-        choice2: params.choices[2],
-        choice3: params.choices[3],
-        answerIndex: params.answerIndex,
+        choicesJson: JSON.stringify(params.choices),
+        answersJson: JSON.stringify(Array.from(new Set((params.answerIndexes ?? []).filter((i) => i >= 0 && i < 4))).sort((a,b)=>a-b)),
         explanation: params.explanation,
     })
 }
@@ -48,13 +45,15 @@ export async function getRandomQuestion() {
     const row = await db.select().from(questions).orderBy(sql`RANDOM()`).limit(1)
     if (!row.length) return null
     const q = row[0]
+    const choices = JSON.parse(q.choicesJson) as string[]
+    const answers = JSON.parse(q.answersJson) as number[]
     return {
         id: q.id,
         genre: q.genre,
         topic: q.topic ?? undefined,
         question: q.question,
-        choices: [q.choice0, q.choice1, q.choice2, q.choice3] as [string, string, string, string],
-        answerIndex: q.answerIndex,
+        choices: [choices[0], choices[1], choices[2], choices[3]] as [string, string, string, string],
+        answerIndexes: answers,
         explanation: q.explanation,
         createdAt: q.createdAt,
     }

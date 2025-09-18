@@ -24,8 +24,8 @@ export default function HomePage() {
     const [count, setCount] = useState<number>(1)
     const [model, setModel] = useState<string>('gpt-4.1')
     const [results, setResults] = useState<Question[]>([])
-    // 各問題の解答状態
-    const [selectedIndices, setSelectedIndices] = useState<Record<number, number | null>>({})
+    // 各問題の解答状態（複数選択対応）
+    const [selectedMap, setSelectedMap] = useState<Record<number, number[]>>({})
     const [answeredMap, setAnsweredMap] = useState<Record<number, boolean>>({})
     // 下段(プレビュー+チャット)の高さ(px)。ローカルに保存して復元。
     const [mainHeight, setMainHeight] = useState<number>(640)
@@ -90,7 +90,7 @@ export default function HomePage() {
     async function handleGenerate() {
         setLoading(true)
         setResults([])
-        setSelectedIndices({})
+    setSelectedMap({})
         setAnsweredMap({})
         try {
             const res = await fetch('/api/questions/generate', {
@@ -120,7 +120,7 @@ export default function HomePage() {
                     topic: topic || undefined,
                     question: q.question,
                     choices: [q.choices[0], q.choices[1], q.choices[2], q.choices[3]],
-                    answerIndex: q.answerIndex,
+                    answerIndexes: (q as any).answerIndexes ?? [],
                     explanation: q.explanation,
                 })
                 toast(`問題${idx + 1}を保存しました`)
@@ -142,7 +142,7 @@ export default function HomePage() {
                         topic: topic || undefined,
                         question: q.question,
                         choices: [q.choices[0], q.choices[1], q.choices[2], q.choices[3]],
-                        answerIndex: q.answerIndex,
+                        answerIndexes: (q as any).answerIndexes ?? [],
                         explanation: q.explanation,
                     })
                 }
@@ -268,7 +268,7 @@ export default function HomePage() {
                         {!results.length && <Card><CardContent className="text-sm text-slate-500">まだ生成していません</CardContent></Card>}
                         {results.map((q, idx) => {
                             const answered = answeredMap[idx] || false
-                            const selected = selectedIndices[idx] ?? null
+                            const selected = selectedMap[idx] ?? []
                             return (
                                 <Card key={idx}>
                                     <CardHeader className="flex flex-row items-start justify-between">
@@ -284,27 +284,40 @@ export default function HomePage() {
                                                 variant="outline"
                                                 size="sm"
                                                 onClick={() => setAnsweredMap((m) => ({ ...m, [idx]: true }))}
-                                                disabled={answered || selected === null}
+                                                disabled={answered || selected.length === 0}
                                             >
                                                 解答
                                             </Button>
-                                            {answered && selected !== null && (
+                                            {answered && (
                                                 <span className="text-sm">
-                                                    {selected === q.answerIndex ? '正解です。' : '不正解です。'}
+                                                    {(() => {
+                                                        const ans = new Set((q as any).answerIndexes as number[])
+                                                        const set = new Set(selected)
+                                                        if (ans.size !== set.size) return '不正解です。'
+                                                        for (const i of set) if (!ans.has(i)) return '不正解です。'
+                                                        return '正解です。'
+                                                    })()}
                                                 </span>
                                             )}
                                         </div>
                                         <ol className="list-decimal pl-6 space-y-1">
                                             {q.choices.map((c, i) => {
-                                                const isSelected = selected === i
-                                                const isCorrect = answered && i === q.answerIndex
+                                                const selectedSet = new Set(selected)
+                                                const isSelected = selectedSet.has(i)
+                                                const correctSet = new Set((q as any).answerIndexes as number[])
+                                                const isCorrect = answered && correctSet.has(i)
                                                 const isWrong = answered && isSelected && !isCorrect
                                                 return (
                                                     <li
                                                         key={i}
                                                         onClick={() => {
                                                             if (answered) return
-                                                            setSelectedIndices((s) => ({ ...s, [idx]: i }))
+                                                            setSelectedMap((m) => {
+                                                                const curr = new Set(m[idx] ?? [])
+                                                                if (curr.has(i)) curr.delete(i)
+                                                                else curr.add(i)
+                                                                return { ...m, [idx]: Array.from(curr).sort((a,b)=>a-b) }
+                                                            })
                                                         }}
                                                         className={[
                                                             'cursor-pointer select-none rounded px-1 py-0.5',

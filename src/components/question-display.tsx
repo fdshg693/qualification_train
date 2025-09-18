@@ -12,7 +12,7 @@ export type QuestionDisplayProps = {
 }
 
 export function QuestionDisplay({ question, meta }: QuestionDisplayProps) {
-    const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
+    const [selected, setSelected] = useState<Set<number>>(new Set())
     const [answered, setAnswered] = useState(false)
 
     // SSR と CSR の不一致を避けるため、初回はそのまま表示し、マウント後にシャッフル
@@ -25,7 +25,7 @@ export function QuestionDisplay({ question, meta }: QuestionDisplayProps) {
 
     useEffect(() => {
         // 新しい問題表示時は状態リセット
-        setSelectedIndex(null)
+    setSelected(new Set())
         setAnswered(false)
 
         // クライアント側でのみシャッフル（Fisher-Yates）
@@ -39,11 +39,16 @@ export function QuestionDisplay({ question, meta }: QuestionDisplayProps) {
 
     const items = shuffled ?? original // ハイドレーション時は original と一致させる
 
-    const isSelectedCorrect = useMemo(() => {
-        if (selectedIndex === null) return false
-        const selected = items[selectedIndex]
-        return selected?.originalIndex === question.answerIndex
-    }, [selectedIndex, items, question.answerIndex])
+    const isAllCorrect = useMemo(() => {
+        const ans = new Set((question as any).answerIndexes as number[])
+        if (!answered) return false
+        if (selected.size !== ans.size) return false
+        for (const idx of selected) {
+            const original = items[idx]?.originalIndex
+            if (!ans.has(original)) return false
+        }
+        return true
+    }, [answered, selected, items, question])
 
     return (
         <Card>
@@ -60,27 +65,33 @@ export function QuestionDisplay({ question, meta }: QuestionDisplayProps) {
                         type="button"
                         variant="outline"
                         onClick={() => setAnswered(true)}
-                        disabled={answered || selectedIndex === null}
+                        disabled={answered || selected.size === 0}
                     >
                         解答
                     </Button>
-                    {answered && selectedIndex !== null && (
+                    {answered && (
                         <span className="text-sm">
-                            {isSelectedCorrect ? '正解です。' : '不正解です。'}
+                            {isAllCorrect ? '正解です。' : '不正解です。'}
                         </span>
                     )}
                 </div>
                 <ol className="list-decimal pl-6 space-y-1">
                     {items.map((item, i) => {
-                        const isSelected = selectedIndex === i
-                        const isCorrect = answered && item.originalIndex === question.answerIndex
+                        const isSelected = selected.has(i)
+                        const correctSet = new Set((question as any).answerIndexes as number[])
+                        const isCorrect = answered && correctSet.has(item.originalIndex)
                         const isWrong = answered && isSelected && !isCorrect
                         return (
                             <li
                                 key={item.originalIndex}
                                 onClick={() => {
                                     if (answered) return
-                                    setSelectedIndex(i)
+                                    setSelected((prev) => {
+                                        const next = new Set(prev)
+                                        if (next.has(i)) next.delete(i)
+                                        else next.add(i)
+                                        return next
+                                    })
                                 }}
                                 className={[
                                     'cursor-pointer select-none rounded px-1 py-0.5',

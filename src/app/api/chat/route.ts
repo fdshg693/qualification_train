@@ -9,7 +9,7 @@ const BodySchema = z.object({
     contextQuestions: z.array(z.object({
         question: z.string(),
         choices: z.array(z.string()).length(4),
-        answerIndex: z.number().int().min(0).max(3),
+        answerIndexes: z.array(z.number().int().min(0).max(3)).max(4).default([]),
         explanation: z.string()
     })).optional(),
     contextOptions: z.object({
@@ -42,7 +42,12 @@ export async function POST(req: Request) {
             if (incQ) lines.push(`Q${i + 1}: ${q.question}`)
             if (incAns) {
                 lines.push(`Choices: ${q.choices.join(' / ')}`)
-                lines.push(`Answer: ${q.choices[q.answerIndex]}`)
+                if (q.answerIndexes.length) {
+                    const answers = q.answerIndexes.map((idx) => q.choices[idx]).join(' / ')
+                    lines.push(`Answers: ${answers}`)
+                } else {
+                    lines.push(`Answers: (なし)`)    
+                }
             }
             if (incExp) lines.push(`Explanation: ${q.explanation}`)
             return lines.join('\n')

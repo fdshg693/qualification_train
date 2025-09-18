@@ -13,20 +13,24 @@ export type GenerateParams = {
     model?: string
 }
 
-// Utility to shuffle choices and randomize answerIndex similar to existing single logic
+// Utility to shuffle choices and remap answerIndexes accordingly
 function normalizeQuestion(q: Question): Question {
-    const newAnswerIndex = Math.floor(Math.random() * 4)
     const origChoices = Array.isArray(q.choices) ? q.choices.slice(0, 4) : []
     while (origChoices.length < 4) origChoices.push('')
-    const modelCorrectIndex = typeof q.answerIndex === 'number' && q.answerIndex >= 0 && q.answerIndex <= 3 ? q.answerIndex : 0
-    const correctAnswer = origChoices[modelCorrectIndex]
-    const remaining = origChoices.filter((_, idx) => idx !== modelCorrectIndex)
-    const newChoices: string[] = []
-    for (let i = 0, r = 0; i < 4; i++) {
-        if (i === newAnswerIndex) newChoices.push(correctAnswer)
-        else newChoices.push(remaining[r++] ?? '')
+    const order = [0, 1, 2, 3]
+    for (let i = order.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        ;[order[i], order[j]] = [order[j], order[i]]
     }
-    return { question: q.question, choices: newChoices as [string, string, string, string], answerIndex: newAnswerIndex, explanation: q.explanation }
+    const newChoices: string[] = order.map((idx) => origChoices[idx])
+    // Map old index -> new index
+    const pos: Record<number, number> = {}
+    for (let newIdx = 0; newIdx < order.length; newIdx++) pos[order[newIdx]] = newIdx
+    const origAns = Array.isArray((q as any).answerIndexes) ? (q as any).answerIndexes as number[] : []
+    const newAns = origAns.map((i) => pos[i]).filter((i) => i >= 0 && i < 4)
+    // ensure uniqueness and sorted for stable UI
+    const uniqueSorted = Array.from(new Set(newAns)).sort((a, b) => a - b)
+    return { question: q.question, choices: newChoices as [string, string, string, string], answerIndexes: uniqueSorted, explanation: q.explanation }
 }
 
 export async function generateQuestions(params: GenerateParams): Promise<Question[]> {
@@ -37,23 +41,30 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
     const apiKey = process.env.OPENAI_API_KEY
 
     if (!apiKey) {
-        // Mock: generate deterministic-ish set by varying index
-        const baseCorrect = 'SYN → SYN-ACK → ACK'
-        const distractors = ['ACK → SYN-ACK → SYN', 'FIN → FIN-ACK → ACK', 'SYN → ACK → SYN-ACK']
+        // Mock: generate deterministic-ish set with sometimes multiple answers
+        const base = [
+            {
+                q: 'TCPのコネクション確立で正しい手順はどれ?',
+                choices: ['SYN → SYN-ACK → ACK', 'ACK → SYN-ACK → SYN', 'FIN → FIN-ACK → ACK', 'SYN → ACK → SYN-ACK'],
+                answers: [0],
+                exp: 'TCPは3-way handshakeでSYN→SYN-ACK→ACKの順です。'
+            },
+            {
+                q: 'HTTPの安全なメソッドをすべて選べ。',
+                choices: ['GET', 'HEAD', 'POST', 'PUT'],
+                answers: [0,1],
+                exp: 'GET/HEADはセーフ（副作用なし）が原則。'
+            }
+        ]
         const out: Question[] = []
         for (let n = 0; n < count; n++) {
-            const answerIndex = Math.floor(Math.random() * 4)
-            const choices: string[] = []
-            for (let i = 0, d = 0; i < 4; i++) {
-                if (i === answerIndex) choices.push(baseCorrect)
-                else choices.push(distractors[d++])
-            }
-            out.push({
-                question: `(${n + 1}) TCPのコネクション確立で正しい手順はどれ?`,
-                choices: choices as [string, string, string, string],
-                answerIndex,
-                explanation: 'TCPは3-way handshakeでSYN→SYN-ACK→ACKの順に確立します。',
-            })
+            const item = base[n % base.length]
+            out.push(normalizeQuestion({
+                question: `(${n + 1}) ${item.q}`,
+                choices: item.choices as [string, string, string, string],
+                answerIndexes: item.answers,
+                explanation: item.exp,
+            } as Question))
         }
         return out
     }
@@ -61,11 +72,11 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
     const openai = createOpenAI({ apiKey })
     // Ask model to return an array of JSON objects strictly matching the schema per item
     const system = `あなたは与えられたサブジャンルとサブトピックの範囲で、厳密なJSONで四択問題を${count}問だけ生成します。`;
-    const user = `サブジャンル: ${subgenre ?? '未指定'} / サブトピック: ${topic ?? '未指定'}\n出力は次のzodスキーマ(オブジェクト)に一致すること: { questions: Question[] }。Question = { question: string, choices: [string,string,string,string], answerIndex: 0..3, explanation: string }。余計なテキストは一切含めず、JSONのみ。 問題数: ${count}`
+    const user = `サブジャンル: ${subgenre ?? '未指定'} / サブトピック: ${topic ?? '未指定'}\n出力は次のzodスキーマ(オブジェクト)に一致すること: { questions: Question[] }。Question = { question: string, choices: [string,string,string,string], answerIndexes: number[], explanation: string }。answerIndexes は 0..3 の重複なし整数配列（正解が0〜4個）。余計なテキストは一切含めず、JSONのみ。 問題数: ${count}`
 
     // We will call model per question if array attempt fails, for robustness
     try {
-        const { object } = await generateObject({
+            const { object } = await generateObject({
             model: openai(model),
             system,
             prompt: user,
@@ -93,7 +104,7 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
         try {
             const { object } = await generateObject({
                 model: openai(model),
-                system: 'あなたは四択問題を厳密なJSONで1問だけ生成します。',
+                system: 'あなたは四択問題（複数正解可）を厳密なJSONで1問だけ生成します。',
                 prompt: `${user}\n現在 ${i + 1} / ${count} 問目を生成。`,
                 schema: QuestionSchema,
             })
