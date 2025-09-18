@@ -60,8 +60,8 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
 
     const openai = createOpenAI({ apiKey })
     // Ask model to return an array of JSON objects strictly matching the schema per item
-    const system = `あなたは与えられたサブジャンルとサブトピックの範囲で、厳密なJSON配列で四択問題を${count}問だけ生成します。`;
-    const user = `サブジャンル: ${subgenre ?? '未指定'} / サブトピック: ${topic ?? '未指定'}\n出力は次のzodスキーマ(配列)に一致すること: Question[] = { question: string, choices: [string,string,string,string], answerIndex: 0..3, explanation: string } の配列。余計なテキストは一切含めず、JSON配列のみ。 問題数: ${count}`
+    const system = `あなたは与えられたサブジャンルとサブトピックの範囲で、厳密なJSONで四択問題を${count}問だけ生成します。`;
+    const user = `サブジャンル: ${subgenre ?? '未指定'} / サブトピック: ${topic ?? '未指定'}\n出力は次のzodスキーマ(オブジェクト)に一致すること: { questions: Question[] }。Question = { question: string, choices: [string,string,string,string], answerIndex: 0..3, explanation: string }。余計なテキストは一切含めず、JSONのみ。 問題数: ${count}`
 
     // We will call model per question if array attempt fails, for robustness
     try {
@@ -69,8 +69,8 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
             model: openai(model),
             system,
             prompt: user,
-            // We validate as raw JSON string then parse to array of Question
-            schema: z.any(), // we'll manually validate below
+            // Responses API requires an object-shaped JSON schema
+            schema: z.object({ questions: QuestionsArraySchema }),
         }) as { object: any }
 
         // object could be array or single

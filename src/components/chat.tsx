@@ -31,6 +31,13 @@ export function Chat({ questions, title = 'AIチャット', className, placehold
     const [includeAnswerInfo, setIncludeAnswerInfo] = useState(false)
     const [includeExplanation, setIncludeExplanation] = useState(false)
     const scrollRef = useRef<HTMLDivElement | null>(null)
+    // リセット時に未完了レスポンスが反映されないようにセッションIDを持つ
+    const [session, setSession] = useState(0)
+    const sessionRef = useRef(0)
+
+    useEffect(() => {
+        sessionRef.current = session
+    }, [session])
 
     useEffect(() => {
         scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
@@ -50,6 +57,7 @@ export function Chat({ questions, title = 'AIチャット', className, placehold
         setInput('')
         setSending(true)
         setMessages((m) => [...m, { role: 'assistant', content: '...' }])
+        const mySession = sessionRef.current
         try {
             const contextQuestions = selectedQuestionIndex === ''
                 ? []
@@ -72,6 +80,8 @@ export function Chat({ questions, title = 'AIチャット', className, placehold
             const data = await res.json() as { answer?: string; error?: string }
             const answer = data.answer ?? data.error ?? 'エラーが発生しました。'
             setMessages((curr) => {
+                // リセット後の古い応答は捨てる
+                if (mySession !== sessionRef.current) return curr
                 const copy = [...curr]
                 for (let i = copy.length - 1; i >= 0; i--) {
                     if (copy[i].role === 'assistant' && copy[i].content === '...') {
@@ -84,6 +94,8 @@ export function Chat({ questions, title = 'AIチャット', className, placehold
             })
         } catch (e) {
             setMessages((m) => {
+                // リセット後の古い応答は捨てる
+                if (mySession !== sessionRef.current) return m
                 const copy = [...m]
                 // replace last placeholder
                 for (let i = copy.length - 1; i >= 0; i--) {
@@ -96,6 +108,18 @@ export function Chat({ questions, title = 'AIチャット', className, placehold
             })
         } finally {
             setSending(false)
+        }
+    }
+
+    function handleReset() {
+        // 新しいセッションへ切り替えて未完了の返答を無効化
+        setSession((s) => s + 1)
+        setMessages([])
+        setInput('')
+        setSending(false)
+        // スクロール位置も先頭へ
+        if (scrollRef.current) {
+            scrollRef.current.scrollTop = 0
         }
     }
 
@@ -142,7 +166,7 @@ export function Chat({ questions, title = 'AIチャット', className, placehold
                     </div>
                 </div>
                 {/* メッセージエリア: fullHeight 時は親カード内でスクロール。非 fullHeight 時は固定高 */}
-                <div ref={scrollRef} className={(fullHeight ? 'flex-1 min-h-0 ' : 'h-64 ') + 'overflow-y-auto border rounded p-2 bg-white space-y-2 text-sm custom-scroll'}>
+                <div ref={scrollRef} className={(fullHeight ? 'flex-1 min-h-0 ' : 'h-96 ') + 'overflow-y-auto border rounded p-2 bg-white space-y-2 text-sm custom-scroll'}>
                     {messages.length === 0 && (
                         <div className="text-slate-500">質問を入力して送信してください。</div>
                     )}
@@ -187,13 +211,16 @@ export function Chat({ questions, title = 'AIチャット', className, placehold
                 </div>
                 <div className="flex gap-2 items-start">
                     <textarea
-                        className="flex-1 resize-none border rounded p-2 text-sm h-20 focus:outline-none focus:ring"
+                        className="flex-1 resize-none border rounded p-2 text-sm h-24 overflow-y-auto focus:outline-none focus:ring"
                         placeholder={placeholder}
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                     // Enter 単独での送信を無効化 (Shift+Enter で改行はブラウザ既定動作)
                     />
-                    <Button disabled={sending || !input.trim()} onClick={handleSend}>送信</Button>
+                    <div className="flex flex-col gap-2">
+                        <Button disabled={sending || !input.trim()} onClick={handleSend}>送信</Button>
+                        <Button variant="secondary" onClick={handleReset}>リセット</Button>
+                    </div>
                 </div>
             </CardContent>
         </Card>

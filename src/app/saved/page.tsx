@@ -35,8 +35,11 @@ export default async function SavedPage({ searchParams }: { searchParams?: Promi
                 <Input name="q" placeholder="キーワード" defaultValue={sp.q || ''} />
                 <Button type="submit">検索</Button>
             </form>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-                <div className="grid gap-3">
+            {/* 下段は固定高エリア内で左右が独立スクロール */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch h-[70vh] min-h-[560px] overflow-hidden">
+                {/* 左: 問題一覧（内側スクロール） */}
+                <div className="min-h-0 overflow-y-auto">
+                    <div className="grid gap-3">
                     {data.map((row: any) => (
                         <Card key={row.id}>
                             <CardHeader className="flex items-center justify-between">
@@ -69,12 +72,15 @@ export default async function SavedPage({ searchParams }: { searchParams?: Promi
                         </Card>
                     ))}
                     {!data.length && <div className="text-slate-500 text-sm">保存された問題はありません</div>}
+                    </div>
                 </div>
-                <div className="min-h-[600px]">
+                {/* 右: チャット（内側スクロール） */}
+                <div className="flex flex-col min-h-0">
                     <Chat
                         questions={chatContext}
                         title="AIチャット"
                         fullHeight
+                        className="h-full max-h-full"
                     />
                 </div>
             </div>
