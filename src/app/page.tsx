@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useTransition } from 'react'
+import type { MouseEvent as ReactMouseEvent } from 'react'
 import type { Question } from '@/lib/schema'
 import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
@@ -26,6 +27,8 @@ export default function HomePage() {
     // 各問題の解答状態
     const [selectedIndices, setSelectedIndices] = useState<Record<number, number | null>>({})
     const [answeredMap, setAnsweredMap] = useState<Record<number, boolean>>({})
+    // 下段(プレビュー+チャット)の高さ(px)。ローカルに保存して復元。
+    const [mainHeight, setMainHeight] = useState<number>(640)
 
     const { toast, message } = useToast()
     const [isSaving, startSaving] = useTransition()
@@ -151,8 +154,45 @@ export default function HomePage() {
         })
     }
 
+    // 初期高さをローカルストレージから復元し、無ければ画面高の約65%に設定
+    useEffect(() => {
+        try {
+            const saved = typeof window !== 'undefined' ? window.localStorage.getItem('qt.mainHeight') : null
+            if (saved) {
+                const v = Number(saved)
+                if (!Number.isNaN(v) && v > 200) setMainHeight(v)
+            } else if (typeof window !== 'undefined') {
+                const v = Math.round(window.innerHeight * 0.65)
+                setMainHeight(Math.min(Math.max(v, 320), 1000))
+            }
+        } catch { /* noop */ }
+    }, [])
+
+    // 変更時に保存
+    useEffect(() => {
+        try { if (typeof window !== 'undefined') window.localStorage.setItem('qt.mainHeight', String(mainHeight)) } catch { }
+    }, [mainHeight])
+
+    // 仕切りバーのドラッグ開始
+    function handleSeparatorMouseDown(e: ReactMouseEvent<HTMLDivElement>) {
+        e.preventDefault()
+        const startY = e.clientY
+        const startH = mainHeight
+        const onMouseMove = (ev: MouseEvent) => {
+            const dy = ev.clientY - startY
+            const next = Math.min(Math.max(startH + dy, 280), 1400)
+            setMainHeight(next)
+        }
+        const onMouseUp = () => {
+            window.removeEventListener('mousemove', onMouseMove)
+            window.removeEventListener('mouseup', onMouseUp)
+        }
+        window.addEventListener('mousemove', onMouseMove)
+        window.addEventListener('mouseup', onMouseUp)
+    }
+
     return (
-        <div className="flex flex-col h-screen max-h-screen">
+        <div className="flex flex-col min-h-screen">
             <h1 className="text-2xl font-bold mb-4 shrink-0">四択問題ジェネレーター</h1>
             {/* 生成フォーム */}
             <section className="grid gap-4 mb-4 shrink-0">
@@ -210,9 +250,17 @@ export default function HomePage() {
                     </Button>
                 </div>
             </section>
+            {/* リサイズハンドル (フォームの直下) */}
+            <div
+                role="separator"
+                aria-orientation="horizontal"
+                title="ドラッグして高さを調整"
+                className="h-2 my-2 rounded bg-slate-200 hover:bg-slate-300 cursor-row-resize select-none"
+                onMouseDown={handleSeparatorMouseDown}
+            />
             {/* 下段 2 カラム: 左=問題プレビュー, 右=チャット */}
-            {/* メイン 2 カラム領域 (ヘッダ+フォームを除いた残りの高さ) */}
-            <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0 overflow-hidden">
+            {/* メイン 2 カラム領域: 固定高(ドラッグで変更) */}
+            <div className="flex flex-col lg:flex-row gap-6 overflow-hidden" style={{ height: mainHeight }}>
                 {/* 問題プレビュー列 */}
                 <section className="basis-1/2 flex flex-col min-h-0 overflow-hidden">
                     <h2 className="text-xl font-semibold mb-2 shrink-0">プレビュー ({results.length}問)</h2>
