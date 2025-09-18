@@ -7,14 +7,17 @@ import { Select } from '@/components/ui/select'
 import { db } from '@/db/client'
 import { genres } from '@/db/schema'
 
-export default async function SavedPage({ searchParams }: { searchParams: { genre?: string; q?: string } }) {
-    const data = await listQuestions({ genre: searchParams.genre, q: searchParams.q })
+type SavedSearchParams = { genre?: string; q?: string }
+
+export default async function SavedPage({ searchParams }: { searchParams?: Promise<SavedSearchParams> }) {
+    const sp = (await searchParams) ?? {}
+    const data = await listQuestions({ genre: sp.genre, q: sp.q })
     const genreRows = await db.select().from(genres).orderBy(genres.createdAt)
     return (
         <div className="space-y-4">
             <h1 className="text-2xl font-bold">保存済みの問題</h1>
             <form className="flex gap-2" action="/saved" method="get">
-                <Select name="genre" defaultValue={searchParams.genre || ''}>
+                <Select name="genre" defaultValue={sp.genre || ''}>
                     <option value="">全ジャンル</option>
                     {genreRows.map((g: any) => (
                         <option key={g.id} value={g.name}>
@@ -22,7 +25,7 @@ export default async function SavedPage({ searchParams }: { searchParams: { genr
                         </option>
                     ))}
                 </Select>
-                <Input name="q" placeholder="キーワード" defaultValue={searchParams.q || ''} />
+                <Input name="q" placeholder="キーワード" defaultValue={sp.q || ''} />
                 <Button type="submit">検索</Button>
             </form>
             <div className="grid gap-3">
