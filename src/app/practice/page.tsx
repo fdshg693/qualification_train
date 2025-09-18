@@ -1,5 +1,6 @@
 import { getRandomQuestion } from '../actions'
 import { QuestionDisplay } from '@/components/question-display'
+import { Chat } from '@/components/chat'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { RefreshButton } from '@/components/refresh-button'
@@ -22,15 +23,31 @@ export default async function PracticePage() {
                 <p className="text-sm text-slate-500">まだ問題が保存されていません。</p>
             )}
             {q && (
-                <QuestionDisplay
-                    question={{
-                        question: q.question,
-                        choices: q.choices,
-                        answerIndex: q.answerIndex,
-                        explanation: q.explanation,
-                    }}
-                    meta={{ genre: q.genre, topic: q.topic ?? undefined }}
-                />
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+                    <div className="space-y-4">
+                        <QuestionDisplay
+                            question={{
+                                question: q.question,
+                                choices: q.choices,
+                                answerIndex: q.answerIndex,
+                                explanation: q.explanation,
+                            }}
+                            meta={{ genre: q.genre, topic: q.topic ?? undefined }}
+                        />
+                    </div>
+                    <div className="min-h-[480px] lg:min-h-[600px]">
+                        <Chat
+                            questions={[{
+                                question: q.question,
+                                choices: q.choices,
+                                answerIndex: q.answerIndex,
+                                explanation: q.explanation,
+                            }]}
+                            title="AIチャット"
+                            fullHeight
+                        />
+                    </div>
+                </div>
             )}
         </div>
     )

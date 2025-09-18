@@ -12,6 +12,12 @@ const BodySchema = z.object({
         answerIndex: z.number().int().min(0).max(3),
         explanation: z.string()
     })).optional(),
+    contextOptions: z.object({
+        includeQuestion: z.boolean().optional(),
+        /** 選択肢と正解（解答情報） */
+        includeAnswerInfo: z.boolean().optional(),
+        includeExplanation: z.boolean().optional(),
+    }).optional(),
     model: z.string().optional() // gpt-5 | gpt-5-mini | gpt-4.1 | gpt-4o
 })
 
@@ -25,9 +31,23 @@ export async function POST(req: Request) {
 
     const apiKey = process.env.OPENAI_API_KEY
     // Build system prompt including selected questions for grounding
+    const opts = body.contextOptions ?? {}
+    const incQ = opts.includeQuestion ?? true
+    const incAns = opts.includeAnswerInfo ?? false
+    const incExp = opts.includeExplanation ?? false
     const contextSnippet = (body.contextQuestions ?? [])
         .slice(0, 5) // limit to avoid prompt bloat
-        .map((q, i) => `Q${i + 1}: ${q.question}\nChoices: ${q.choices.join(' / ')}\nAnswer: ${q.choices[q.answerIndex]}\nExplanation: ${q.explanation}`)
+        .map((q, i) => {
+            const lines: string[] = []
+            if (incQ) lines.push(`Q${i + 1}: ${q.question}`)
+            if (incAns) {
+                lines.push(`Choices: ${q.choices.join(' / ')}`)
+                lines.push(`Answer: ${q.choices[q.answerIndex]}`)
+            }
+            if (incExp) lines.push(`Explanation: ${q.explanation}`)
+            return lines.join('\n')
+        })
+        .filter(Boolean)
         .join('\n\n')
 
     const baseSystem = 'あなたは学習者を支援する丁寧なAIチューターです。ユーザーの質問に簡潔かつ分かりやすく日本語で答えてください。'
@@ -36,7 +56,7 @@ export async function POST(req: Request) {
         : baseSystem
 
     if (!apiKey) {
-        return NextResponse.json({ answer: '（モック応答）コンテキストを元にしたサンプル回答です。' })
+        return NextResponse.json({ answer: '（モック応答）現在はモックモードです。選択したコンテキストと設定を参考にしたサンプル回答を返します。' })
     }
 
     const openai = createOpenAI({ apiKey })

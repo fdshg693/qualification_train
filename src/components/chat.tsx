@@ -26,11 +26,22 @@ export function Chat({ questions, title = 'AIチャット', className, placehold
     const [selectedQuestionIndex, setSelectedQuestionIndex] = useState<number | ''>('')
     // モデル選択 (既定: gpt-4o)
     const [model, setModel] = useState('gpt-4o')
+    // コンテキスト切り替え
+    const [includeQuestion, setIncludeQuestion] = useState(true)
+    const [includeAnswerInfo, setIncludeAnswerInfo] = useState(false)
+    const [includeExplanation, setIncludeExplanation] = useState(false)
     const scrollRef = useRef<HTMLDivElement | null>(null)
 
     useEffect(() => {
         scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
     }, [messages, sending])
+
+    // 問題が1問のみ渡された場合は自動選択
+    useEffect(() => {
+        if (questions.length === 1) {
+            setSelectedQuestionIndex(0)
+        }
+    }, [questions])
 
     async function handleSend() {
         if (!input.trim()) return
@@ -46,7 +57,16 @@ export function Chat({ questions, title = 'AIチャット', className, placehold
             const res = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ messages: [...messages, userMsg], contextQuestions, model })
+                body: JSON.stringify({
+                    messages: [...messages, userMsg],
+                    contextQuestions,
+                    contextOptions: {
+                        includeQuestion,
+                        includeAnswerInfo,
+                        includeExplanation,
+                    },
+                    model,
+                })
             })
             if (!res.ok) throw new Error('Bad response')
             const data = await res.json() as { answer?: string; error?: string }
@@ -83,7 +103,7 @@ export function Chat({ questions, title = 'AIチャット', className, placehold
         <Card className={className + (fullHeight ? ' flex flex-col' : '')}>
             <CardHeader className="text-lg font-semibold shrink-0">{title}</CardHeader>
             <CardContent className={(fullHeight ? 'flex-1 flex flex-col ' : '') + 'space-y-3'}>
-                <div className="flex gap-2 items-center text-sm">
+                <div className="flex gap-2 items-center text-sm flex-wrap">
                     <label className="flex items-center gap-2">
                         <span className="whitespace-nowrap">問題コンテキスト</span>
                         <Select value={selectedQuestionIndex === '' ? '' : String(selectedQuestionIndex)} onChange={(e) => {
@@ -105,6 +125,21 @@ export function Chat({ questions, title = 'AIチャット', className, placehold
                             <option value="gpt-4o">gpt-4o</option>
                         </Select>
                     </label>
+                    {/* トグル群 */}
+                    <div className="flex items-center gap-3 ml-auto">
+                        <label className="flex items-center gap-1">
+                            <input type="checkbox" className="accent-slate-700" checked={includeQuestion} onChange={(e) => setIncludeQuestion(e.target.checked)} />
+                            <span className="whitespace-nowrap">問題文</span>
+                        </label>
+                        <label className="flex items-center gap-1">
+                            <input type="checkbox" className="accent-slate-700" checked={includeAnswerInfo} onChange={(e) => setIncludeAnswerInfo(e.target.checked)} />
+                            <span className="whitespace-nowrap">選択肢・解答</span>
+                        </label>
+                        <label className="flex items-center gap-1">
+                            <input type="checkbox" className="accent-slate-700" checked={includeExplanation} onChange={(e) => setIncludeExplanation(e.target.checked)} />
+                            <span className="whitespace-nowrap">解説</span>
+                        </label>
+                    </div>
                 </div>
                 {/* メッセージエリア: fullHeight 時は親カード内でスクロール。非 fullHeight 時は固定高 */}
                 <div ref={scrollRef} className={(fullHeight ? 'flex-1 min-h-0 ' : 'h-64 ') + 'overflow-y-auto border rounded p-2 bg-white space-y-2 text-sm custom-scroll'}>
