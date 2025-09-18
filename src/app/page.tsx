@@ -23,6 +23,9 @@ export default function HomePage() {
     const [loading, setLoading] = useState(false)
     const [count, setCount] = useState<number>(1)
     const [model, setModel] = useState<string>('gpt-4.1')
+    // 正解数の最小/最大（1..4 の範囲で、各問の正解数はこの範囲からランダムに決定）
+    const [minCorrect, setMinCorrect] = useState<number>(1)
+    const [maxCorrect, setMaxCorrect] = useState<number>(1)
     const [results, setResults] = useState<Question[]>([])
     // 各問題の解答状態（複数選択対応）
     const [selectedMap, setSelectedMap] = useState<Record<number, number[]>>({})
@@ -97,7 +100,14 @@ export default function HomePage() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 // サブジャンル未選択(空)の場合はジャンルを subgenre として送ることで、ジャンル全体からの出題を生成ロジックに伝える
-                body: JSON.stringify({ subgenre: (subgenre || genre) || undefined, topic, count, model }),
+                body: JSON.stringify({
+                    subgenre: (subgenre || genre) || undefined,
+                    topic,
+                    count,
+                    model,
+                    minCorrect,
+                    maxCorrect,
+                }),
             })
             const data = await res.json() as { questions?: Question[] }
             setResults(data.questions ?? [])
@@ -232,6 +242,45 @@ export default function HomePage() {
                     <span className="text-sm font-medium">生成数</span>
                     <Input type="number" min={1} max={50} value={count} onChange={(e) => setCount(Number(e.target.value) || 1)} />
                 </label>
+                <div className="grid gap-2">
+                    <span className="text-sm font-medium">正解の数（最小～最大）</span>
+                    <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-500">最小</span>
+                            <Input
+                                type="number"
+                                min={1}
+                                max={4}
+                                value={minCorrect}
+                                onChange={(e) => {
+                                    const v = Math.max(1, Math.min(4, Number(e.target.value) || 1))
+                                    // 最小が最大を超えないように調整
+                                    setMinCorrect(v)
+                                    if (v > maxCorrect) setMaxCorrect(v)
+                                }}
+                                className="w-24"
+                            />
+                        </div>
+                        <span>〜</span>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-500">最大</span>
+                            <Input
+                                type="number"
+                                min={1}
+                                max={4}
+                                value={maxCorrect}
+                                onChange={(e) => {
+                                    const v = Math.max(1, Math.min(4, Number(e.target.value) || 1))
+                                    // 最大が最小未満にならないように調整
+                                    setMaxCorrect(v)
+                                    if (v < minCorrect) setMinCorrect(v)
+                                }}
+                                className="w-24"
+                            />
+                        </div>
+                    </div>
+                    <p className="text-xs text-slate-500">各問題の正解数はこの範囲からランダムに選ばれます（1〜4）。</p>
+                </div>
                 <label className="grid gap-2">
                     <span className="text-sm font-medium">モデル</span>
                     <Select value={model} onChange={(e) => setModel(e.target.value)}>

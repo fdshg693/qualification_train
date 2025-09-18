@@ -4,8 +4,9 @@
 
 ## ✅ 機能サマリ
 
-- 四択問題を AI もしくはモックで 1〜50 問まとめて生成
+- 四択問題（複数正解対応）を AI もしくはモックで 1〜50 問まとめて生成
 - ジャンル / サブジャンル / 任意トピック指定で出題範囲を絞り込み
+- 各問題の正解数の最小/最大を指定可能（例: 1〜3）。その範囲からランダムに選ばれた個数だけ「ちょうど」正解を含むように生成
 - 問題の保存・検索（ジャンル / キーワード）・削除
 - ランダム 1 問練習ページ `/practice`
 - 学習サポートチャット（最大5問を文脈として会話 / ストリーミング表示）
@@ -33,7 +34,7 @@
 
 | メソッド & パス | 概要 | Body / Query | 備考 |
 |-----------------|------|-------------|------|
-| `POST /api/questions/generate` | 四択問題を batch 生成 (1〜50) | `{ subgenre?: string, topic?: string, count?: number }` | `count` 省略時 1。`subgenre` 未指定の場合はクライアント側でジャンル名を送ってジャンル全体を範囲化 |
+| `POST /api/questions/generate` | 四択問題を batch 生成 (1〜50) | `{ subgenre?: string, topic?: string, count?: number, minCorrect?: 1..4, maxCorrect?: 1..4 }` | `count` 省略時 1。`minCorrect/maxCorrect` 省略時は 1 固定（単一正解）。`subgenre` 未指定の場合はクライアント側でジャンル名を送ってジャンル全体を範囲化 |
 | `GET /api/genres` | ジャンル一覧 | なし | フロント初期ロードで使用 |
 | `GET /api/subgenres?genreId=NUMBER` | サブジャンル一覧 | `genreId` | ジャンル変更時に取得 |
 | `POST /api/chat` | 学習サポートチャット (ストリーミング `text/plain`) | `{ messages: {role,content}[], contextQuestions?: Question[] }` | 最大5問を system prompt に埋め込み |
@@ -46,7 +47,7 @@
 ```bash
 curl -X POST http://localhost:3000/api/questions/generate \
 	-H 'Content-Type: application/json' \
-	-d '{"subgenre":"ネットワーク基礎","topic":"TCP ハンドシェイク","count":5}'
+	-d '{"subgenre":"ネットワーク基礎","topic":"TCP ハンドシェイク","count":5, "minCorrect":1, "maxCorrect":3}'
 ```
 
 ### レスポンス例（抜粋）
@@ -56,7 +57,7 @@ curl -X POST http://localhost:3000/api/questions/generate \
 		{
 			"question": "(1) TCPのコネクション確立で正しい手順はどれ?",
 			"choices": ["SYN → SYN-ACK → ACK", "...", "...", "..."],
-			"answerIndex": 0,
+			"answerIndexes": [0,2],
 			"explanation": "TCPは3-way handshake..."
 		}
 	]
@@ -67,16 +68,16 @@ curl -X POST http://localhost:3000/api/questions/generate \
 
 | テーブル | 主なカラム | 用途 |
 |----------|------------|------|
-| `questions` | `genre`, `topic`, `question`, `choice0..3`, `answerIndex`, `explanation`, `createdAt` | 四択問題本体 |
+| `questions` | `genre`, `topic`, `question`, `choicesJson` (string[]), `answersJson` (number[]), `explanation`, `createdAt` | 四択問題本体 |
 | `genres` | `name`, `createdAt` | ジャンル管理 |
 | `subgenres` | `genreId`, `name`, `createdAt` (複合Unique: genreId+name) | サブジャンル管理 |
 
 Zod スキーマ `QuestionSchema` (単一問題):
 ```ts
-{ question: string, choices: [string,string,string,string], answerIndex: 0|1|2|3, explanation: string }
+{ question: string, choices: [string,string,string,string], answerIndexes: number[], explanation: string }
 ```
 
-フロント/DB 保存時は `choices` を `choice0..3` に展開。生成後に内部で解答インデックス再シャッフルを行いランダム性を確保しています（`generate-questions.ts` 内 `normalizeQuestion`）。
+生成後は内部で選択肢をシャッフルしつつ `answerIndexes` を再マッピングして整合性を保ちます（`generate-questions.ts` 内 `normalizeQuestion`）。
 
 ## 🛠 サーバーアクション
 

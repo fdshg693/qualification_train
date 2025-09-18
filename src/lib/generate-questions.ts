@@ -11,6 +11,8 @@ export type GenerateParams = {
     topic?: string
     count: number // desired number of questions (1..50 reasonable)
     model?: string
+    minCorrect?: number // desired minimum number of correct choices per question (1..4)
+    maxCorrect?: number // desired maximum number of correct choices per question (1..4)
 }
 
 // Utility to shuffle choices and remap answerIndexes accordingly
@@ -40,6 +42,50 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
     const model = allowedModels.includes(params.model ?? '') ? (params.model as string) : 'gpt-4.1'
     const apiKey = process.env.OPENAI_API_KEY
 
+    // Clamp and sanitize min/max corrects (default to 1..1 to keep single-answer if unspecified)
+    const minC0 = Math.max(1, Math.min(4, Math.floor(params.minCorrect ?? 1)))
+    const maxC0 = Math.max(1, Math.min(4, Math.floor(params.maxCorrect ?? minC0)))
+    const minC = Math.min(minC0, maxC0)
+    const maxC = Math.max(minC0, maxC0)
+
+    // Decide target K for each question upfront to ensure distribution independent of model output
+    const targetKs: number[] = Array.from({ length: count }, () => {
+        if (minC === maxC) return minC
+        const r = Math.floor(Math.random() * (maxC - minC + 1))
+        return minC + r
+    })
+
+    // Helpers to enforce exactly K answers within 0..3
+    function sampleIndicesExactlyK(k: number): number[] {
+        const indices = [0, 1, 2, 3]
+        for (let i = indices.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1))
+            ;[indices[i], indices[j]] = [indices[j], indices[i]]
+        }
+        return indices.slice(0, Math.max(0, Math.min(4, k))).sort((a, b) => a - b)
+    }
+
+    function adjustAnswersToK(ans: number[] | undefined, k: number): number[] {
+        const set = new Set((ans ?? []).filter((i) => Number.isInteger(i) && i >= 0 && i < 4))
+        let arr = Array.from(set)
+        if (arr.length > k) {
+            // randomly drop extras
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1))
+                ;[arr[i], arr[j]] = [arr[j], arr[i]]
+            }
+            arr = arr.slice(0, k)
+        } else if (arr.length < k) {
+            const pool = [0, 1, 2, 3].filter((i) => !set.has(i))
+            for (let i = pool.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1))
+                ;[pool[i], pool[j]] = [pool[j], pool[i]]
+            }
+            arr = arr.concat(pool.slice(0, k - arr.length))
+        }
+        return Array.from(new Set(arr)).sort((a, b) => a - b)
+    }
+
     if (!apiKey) {
         // Mock: generate deterministic-ish set with sometimes multiple answers
         const base = [
@@ -59,10 +105,12 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
         const out: Question[] = []
         for (let n = 0; n < count; n++) {
             const item = base[n % base.length]
+            const k = targetKs[n]
             out.push(normalizeQuestion({
                 question: `(${n + 1}) ${item.q}`,
                 choices: item.choices as [string, string, string, string],
-                answerIndexes: item.answers,
+                // Enforce exactly k correct options in mock
+                answerIndexes: sampleIndicesExactlyK(k),
                 explanation: item.exp,
             } as Question))
         }
@@ -71,8 +119,9 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
 
     const openai = createOpenAI({ apiKey })
     // Ask model to return an array of JSON objects strictly matching the schema per item
-    const system = `あなたは与えられたサブジャンルとサブトピックの範囲で、厳密なJSONで四択問題を${count}問だけ生成します。`;
-    const user = `サブジャンル: ${subgenre ?? '未指定'} / サブトピック: ${topic ?? '未指定'}\n出力は次のzodスキーマ(オブジェクト)に一致すること: { questions: Question[] }。Question = { question: string, choices: [string,string,string,string], answerIndexes: number[], explanation: string }。answerIndexes は 0..3 の重複なし整数配列（正解が0〜4個）。余計なテキストは一切含めず、JSONのみ。 問題数: ${count}`
+    const system = `あなたは与えられたサブジャンル/トピックに基づき、厳密なJSONで四択問題を${count}問だけ生成します。各問題は複数正解の可能性があります。`;
+    const ksStr = JSON.stringify(targetKs)
+    const user = `サブジャンル: ${subgenre ?? '未指定'} / サブトピック: ${topic ?? '未指定'}\n各問題 i (1..${count}) の正解数は ks[i-1] 個に「ちょうど一致」させてください。ks = ${ksStr}\n出力は次のzodスキーマ(オブジェクト)に一致すること: { questions: Question[] }。Question = { question: string, choices: [string,string,string,string], answerIndexes: number[], explanation: string }。answerIndexes は 0..3 の重複なし整数配列。余計なテキストは一切含めず、JSONのみ。 問題数: ${count}`
 
     // We will call model per question if array attempt fails, for robustness
     try {
@@ -92,7 +141,12 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
 
         const parsed = QuestionsArraySchema.safeParse(arr)
         if (parsed.success) {
-            return parsed.data.slice(0, count).map(normalizeQuestion)
+            // Enforce per-question K just in case the model drifted
+            const adjusted = parsed.data.slice(0, count).map((q, i) => ({
+                ...q,
+                answerIndexes: adjustAnswersToK((q as any).answerIndexes as number[] | undefined, targetKs[i])
+            }))
+            return adjusted.map(normalizeQuestion)
         }
     } catch (e) {
         console.warn('batch generation failed, fallback to per-question', e)
@@ -105,10 +159,14 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
             const { object } = await generateObject({
                 model: openai(model),
                 system: 'あなたは四択問題（複数正解可）を厳密なJSONで1問だけ生成します。',
-                prompt: `${user}\n現在 ${i + 1} / ${count} 問目を生成。`,
+                prompt: `サブジャンル: ${subgenre ?? '未指定'} / サブトピック: ${topic ?? '未指定'}\nこの1問の正解数は「ちょうど ${targetKs[i]} 個」にしてください。出力は Question スキーマのJSONのみ。`,
                 schema: QuestionSchema,
             })
-            results.push(normalizeQuestion(object))
+            const enforced = {
+                ...object,
+                answerIndexes: adjustAnswersToK((object as any).answerIndexes as number[] | undefined, targetKs[i])
+            }
+            results.push(normalizeQuestion(enforced as Question))
         } catch (e) {
             console.error('single generation failed', i, e)
         }
