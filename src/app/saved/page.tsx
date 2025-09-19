@@ -15,8 +15,8 @@ export default async function SavedPage({ searchParams }: { searchParams?: Promi
     const data = await listQuestions({ genre: sp.genre, q: sp.q })
     const genreRows = await db.select().from(genres).orderBy(genres.createdAt)
     const chatContext = data.map((row: any) => {
-        const choices = JSON.parse(row.choicesJson) as string[]
-        const answers = JSON.parse(row.answersJson) as number[]
+        const choices = (row.choices as string[]) ?? []
+        const answers = (row.answers as number[]) ?? []
         return ({
             question: row.question,
             choices: [choices[0], choices[1], choices[2], choices[3]] as [string, string, string, string],
@@ -65,8 +65,8 @@ export default async function SavedPage({ searchParams }: { searchParams?: Promi
                             </CardHeader>
                             <CardContent className="text-sm">
                                 <ol className="list-decimal pl-6 space-y-1">
-                                    {(JSON.parse(row.choicesJson) as string[]).map((c: string, i: number) => {
-                                        const ans: number[] = JSON.parse(row.answersJson)
+                                    {((row.choices as string[]) ?? []).map((c: string, i: number) => {
+                                        const ans: number[] = (row.answers as number[]) ?? []
                                         const isCorrect = ans.includes(i)
                                         return (
                                             <li key={i} className={isCorrect ? 'font-semibold' : ''}>

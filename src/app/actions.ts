@@ -19,8 +19,8 @@ export async function saveQuestion(params: SaveParams) {
         genre: params.genre,
         topic: params.topic ?? null,
         question: params.question,
-        choicesJson: JSON.stringify(params.choices),
-        answersJson: JSON.stringify(Array.from(new Set((params.answerIndexes ?? []).filter((i) => i >= 0 && i < 4))).sort((a,b)=>a-b)),
+        choices: params.choices,
+        answers: Array.from(new Set((params.answerIndexes ?? []).filter((i) => i >= 0 && i < 4))).sort((a,b)=>a-b),
         explanation: params.explanation,
     })
 }
@@ -41,19 +41,22 @@ export async function listQuestions(opts?: { genre?: string; q?: string }) {
 
 // ランダムな1件の問題を取得（練習用）
 export async function getRandomQuestion() {
-    // SQLite の RANDOM() を利用し1件取得
-    const row = await db.select().from(questions).orderBy(sql`RANDOM()`).limit(1)
+    // Postgres の random() を利用し1件取得
+    const row = await db.select().from(questions).orderBy(sql`random()`).limit(1)
     if (!row.length) return null
     const q = row[0]
-    const choices = JSON.parse(q.choicesJson) as string[]
-    const answers = JSON.parse(q.answersJson) as number[]
     return {
         id: q.id,
         genre: q.genre,
         topic: q.topic ?? undefined,
         question: q.question,
-        choices: [choices[0], choices[1], choices[2], choices[3]] as [string, string, string, string],
-        answerIndexes: answers,
+        choices: [
+            (q.choices as string[])[0] ?? '',
+            (q.choices as string[])[1] ?? '',
+            (q.choices as string[])[2] ?? '',
+            (q.choices as string[])[3] ?? '',
+        ] as [string, string, string, string],
+        answerIndexes: (q.answers as number[]),
         explanation: q.explanation,
         createdAt: q.createdAt,
     }

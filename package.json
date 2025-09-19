@@ -14,10 +14,10 @@
     "dependencies": {
         "@ai-sdk/openai": "^2.0.32",
         "ai": "^5.0.45",
-        "better-sqlite3": "^12.2.0",
         "clsx": "^2.1.1",
         "drizzle-kit": "^0.31.4",
         "drizzle-orm": "^0.44.5",
+        "postgres": "^3.4.5",
         "next": "^15.0.0",
         "react": "18.3.1",
         "react-dom": "18.3.1",
@@ -27,7 +27,6 @@
         "zod": "^4.1.9"
     },
     "devDependencies": {
-        "@types/better-sqlite3": "^7.6.13",
         "@types/node": "20.11.30",
         "@types/react": "18.2.66",
         "@types/react-dom": "18.2.22",

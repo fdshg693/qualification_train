@@ -1,46 +1,21 @@
-import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core'
-import { sql } from 'drizzle-orm'
+import { pgTable, serial, text, integer, timestamp, jsonb, uniqueIndex } from 'drizzle-orm/pg-core'
 
-export const questions = sqliteTable('questions', {
-    id: integer('id').primaryKey({ autoIncrement: true }),
-    genre: text('genre').notNull(),
-    topic: text('topic'),
-    question: text('question').notNull(),
-    // JSON.stringify(string[])
-    choicesJson: text('choices_json').notNull(),
-    // JSON.stringify(number[])
-    answersJson: text('answers_json').notNull(),
-    explanation: text('explanation').notNull(),
-    createdAt: integer('created_at', { mode: 'timestamp_ms' })
-        .notNull()
-        .default(sql`(strftime('%s','now')*1000)`),
-})
-
-export type InsertQuestion = typeof questions.$inferInsert
-export type SelectQuestion = typeof questions.$inferSelect
-
-// ジャンル管理テーブル（管理画面から追加・編集）
-export const genres = sqliteTable('genres', {
-    id: integer('id').primaryKey({ autoIncrement: true }),
+export const genres = pgTable('genres', {
+    id: serial('id').primaryKey(),
     name: text('name').notNull().unique(),
-    createdAt: integer('created_at', { mode: 'timestamp_ms' })
-        .notNull()
-        .default(sql`(strftime('%s','now')*1000)`),
+    createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
 })
 
 export type InsertGenre = typeof genres.$inferInsert
 export type SelectGenre = typeof genres.$inferSelect
 
-// サブジャンル管理テーブル（ジャンルに紐づく）
-export const subgenres = sqliteTable(
+export const subgenres = pgTable(
     'subgenres',
     {
-        id: integer('id').primaryKey({ autoIncrement: true }),
+        id: serial('id').primaryKey(),
         genreId: integer('genre_id').notNull().references(() => genres.id, { onDelete: 'cascade' }),
         name: text('name').notNull(),
-        createdAt: integer('created_at', { mode: 'timestamp_ms' })
-            .notNull()
-            .default(sql`(strftime('%s','now')*1000)`),
+        createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
     },
     (t) => ({
         subgenresGenreIdNameUnique: uniqueIndex('subgenres_genre_id_name_unique').on(t.genreId, t.name),
@@ -49,3 +24,17 @@ export const subgenres = sqliteTable(
 
 export type InsertSubgenre = typeof subgenres.$inferInsert
 export type SelectSubgenre = typeof subgenres.$inferSelect
+
+export const questions = pgTable('questions', {
+    id: serial('id').primaryKey(),
+    genre: text('genre').notNull(),
+    topic: text('topic'),
+    question: text('question').notNull(),
+    choices: jsonb('choices').$type<string[]>().notNull(),
+    answers: jsonb('answers').$type<number[]>().notNull(),
+    explanation: text('explanation').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+})
+
+export type InsertQuestion = typeof questions.$inferInsert
+export type SelectQuestion = typeof questions.$inferSelect

@@ -1,17 +1,15 @@
-import Database from 'better-sqlite3'
-import { drizzle } from 'drizzle-orm/better-sqlite3'
+import postgres from 'postgres'
+import { drizzle } from 'drizzle-orm/postgres-js'
 
-const sqlite = new Database('sqlite.db')
+const connectionString = process.env.DATABASE_URL
 
-// Ensure genres table exists (id, name unique, created_at)
-sqlite.exec(`
-CREATE TABLE IF NOT EXISTS "genres" (
-	"id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	"name" text NOT NULL UNIQUE,
-	"created_at" integer NOT NULL DEFAULT (strftime('%s','now')*1000)
-);
-`)
+if (!connectionString) {
+    // ここで throw せず、起動時に気付きやすいメッセージを出す
+    console.warn('[db] DATABASE_URL が設定されていません。Postgres 接続は実行時に失敗します。')
+}
 
-// subgenres テーブルは Drizzle のマイグレーションで作成します
+const client = postgres(connectionString ?? '', {
+    // ssl: 'require', // 本番で必要に応じて
+})
 
-export const db = drizzle(sqlite)
+export const db = drizzle(client)
