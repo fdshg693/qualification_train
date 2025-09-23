@@ -11,7 +11,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     return (
         <html lang="ja">
             <body>
-                <div className="min-h-screen">
+                <div className="min-h-screen flex flex-col">
                     <header className="bg-white border-b">
                         {/* max-w-4xl を外し横幅いっぱいを利用 */}
                         <div className="container mx-auto px-6 py-4 max-w-none flex items-center justify-between">
@@ -26,7 +26,30 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                         </div>
                     </header>
                     {/* メイン領域も最大幅制限を解除 */}
-                    <main className="container mx-auto px-6 py-6 max-w-none">{children}</main>
+                    <main className="container mx-auto px-6 py-6 max-w-none flex-1">{children}</main>
+                    <footer className="border-t bg-slate-50">
+                        <div className="container mx-auto px-6 py-6 max-w-none flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className="text-xs text-slate-500">
+                                <span>© {new Date().getFullYear()} 四択問題ジェネレーター</span>
+                                <span className="hidden sm:inline mx-2">・</span>
+                                <span className="hidden sm:inline">学習をもっと手軽に。</span>
+                            </div>
+                            <nav className="flex items-center gap-4 text-xs">
+                                <Link href="/" className="text-slate-600 hover:text-slate-900">ホーム</Link>
+                                <Link href="/saved" className="text-slate-600 hover:text-slate-900">保存済み</Link>
+                                <Link href="/practice" className="text-slate-600 hover:text-slate-900">ランダム練習</Link>
+                                <Link href="/admin/genres" className="text-slate-600 hover:text-slate-900">ジャンル管理</Link>
+                                <a
+                                    href="https://github.com/fdshg693/qualification_train"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-slate-600 hover:text-slate-900"
+                                >
+                                    GitHub
+                                </a>
+                            </nav>
+                        </div>
+                    </footer>
                 </div>
             </body>
         </html>

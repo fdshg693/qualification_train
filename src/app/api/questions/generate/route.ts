@@ -12,6 +12,7 @@ const BodySchema = z.object({
     model: z.string().optional(),
     minCorrect: z.number().int().min(1).max(4).optional(),
     maxCorrect: z.number().int().min(1).max(4).optional(),
+    concurrency: z.number().int().min(1).max(4).optional(),
     promptName: z.string().optional(),
 })
 
@@ -24,6 +25,7 @@ export async function POST(req: Request) {
     let model: string | undefined
     let minCorrect: number | undefined
     let maxCorrect: number | undefined
+    let concurrency: number | undefined
     let promptName: string | undefined
     try {
         const json = await req.json()
@@ -36,6 +38,7 @@ export async function POST(req: Request) {
             model = parsed.data.model
             minCorrect = parsed.data.minCorrect
             maxCorrect = parsed.data.maxCorrect
+            concurrency = parsed.data.concurrency
             promptName = parsed.data.promptName
         }
     } catch { }
@@ -47,12 +50,16 @@ export async function POST(req: Request) {
             '{genre}': genre ?? '',
             '{subgenre}': subgenre ?? '',
             '{topic}': topic ?? '',
+            '{count}': String(count ?? 1),
+            '{minCorrect}': String(minCorrect ?? ''),
+            '{maxCorrect}': String(maxCorrect ?? ''),
+            '{concurrency}': String(concurrency ?? ''),
         }
         let out = t
         for (const k of Object.keys(map)) out = out.split(k).join(map[k])
         return out
     }
     const composed = composePrompt(template)
-    const questions = await generateQuestions({ genre, subgenre, topic, count, model, minCorrect, maxCorrect, prompt: composed })
+    const questions = await generateQuestions({ genre, subgenre, topic, count, model, minCorrect, maxCorrect, prompt: composed, concurrency })
     return NextResponse.json({ questions })
 }

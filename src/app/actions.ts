@@ -139,6 +139,8 @@ const DEFAULT_PROMPT_TEMPLATE = `あなたはプロの出題者です。以下�
 ジャンル: {genre}
 サブジャンル: {subgenre}
 トピック: {topic}
+問題数: {count}
+正解数（各問）: {minCorrect}〜{maxCorrect}
 
 要件:
 - 問題文は日本語で簡潔に。

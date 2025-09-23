@@ -23,6 +23,8 @@ export default function HomePage() {
     const [loading, setLoading] = useState(false)
     const [count, setCount] = useState<number>(1)
     const [model, setModel] = useState<string>('gpt-4.1')
+    // 並列度（2〜4）
+    const [concurrency, setConcurrency] = useState<number>(2)
     // 正解数の最小/最大（1..4 の範囲で、各問の正解数はこの範囲からランダムに決定）
     const [minCorrect, setMinCorrect] = useState<number>(1)
     const [maxCorrect, setMaxCorrect] = useState<number>(1)
@@ -130,6 +132,7 @@ export default function HomePage() {
                     model,
                     minCorrect,
                     maxCorrect,
+                    concurrency,
                     promptName: promptName || undefined,
                 }),
             })
@@ -209,16 +212,20 @@ export default function HomePage() {
 
     // プロンプトプレビュー（クライアント側で単純置換）
     useEffect(() => {
-        const tmpl = (prompts.find(p => p.name === promptName)?.template) ?? `ジャンル: {genre}\nサブジャンル: {subgenre}\nトピック: {topic}`
+        const tmpl = (prompts.find(p => p.name === promptName)?.template) ?? `ジャンル: {genre}\nサブジャンル: {subgenre}\nトピック: {topic}\n問題数: {count}\n正解数の範囲: {minCorrect}〜{maxCorrect}\n並列度: {concurrency}`
         const map: Record<string, string> = {
             '{genre}': genre ?? '',
             '{subgenre}': subgenre ?? '',
             '{topic}': topic ?? '',
+            '{count}': String(count ?? 1),
+            '{minCorrect}': String(minCorrect ?? ''),
+            '{maxCorrect}': String(maxCorrect ?? ''),
+            '{concurrency}': String(concurrency ?? 2),
         }
         let out = tmpl
         for (const k of Object.keys(map)) out = out.split(k).join(map[k])
         setPromptPreview(out)
-    }, [prompts, promptName, genre, subgenre, topic])
+    }, [prompts, promptName, genre, subgenre, topic, count, minCorrect, maxCorrect, concurrency])
 
     // 仕切りバーのドラッグ開始
     function handleSeparatorMouseDown(e: ReactMouseEvent<HTMLDivElement>) {
@@ -339,6 +346,15 @@ export default function HomePage() {
                         <option value="gpt-4.1">gpt-4.1</option>
                         <option value="gpt40">gpt40</option>
                     </Select>
+                </label>
+                <label className="grid gap-2">
+                    <span className="text-sm font-medium">並列度（同時生成数）</span>
+                    <Select value={String(concurrency)} onChange={(e) => setConcurrency(Math.max(2, Math.min(4, Number(e.target.value) || 2)))}>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                    </Select>
+                    <div className="text-xs text-slate-500">同時に生成するリクエスト数（2〜4）。大きくしすぎるとレート制限の可能性があります。</div>
                 </label>
                 <div className="flex items-center gap-3 mt-2">
                     <Button onClick={handleGenerate} disabled={loading || !genre}>

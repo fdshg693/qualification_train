@@ -1,10 +1,8 @@
 import { QuestionSchema, type Question } from '@/lib/schema'
-import { z } from 'zod'
 import { createOpenAI } from '@ai-sdk/openai'
 import { generateObject } from 'ai'
 
-// Schema for a batch of questions (array of QuestionSchema)
-const QuestionsArraySchema = z.array(QuestionSchema)
+// (Batch schema removed; we now always generate one-by-one for accuracy)
 
 export type GenerateParams = {
     genre?: string
@@ -15,6 +13,7 @@ export type GenerateParams = {
     minCorrect?: number // desired minimum number of correct choices per question (1..4)
     maxCorrect?: number // desired maximum number of correct choices per question (1..4)
     prompt?: string // composed prompt text from template
+    concurrency?: number // parallelism for per-question generation (1..4); default 2
 }
 
 // Utility to shuffle choices and remap answerIndexes accordingly
@@ -119,62 +118,42 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
         return out
     }
 
+    // Always single-question generation path with bounded concurrency
     const openai = createOpenAI({ apiKey })
-    // Ask model to return an array of JSON objects strictly matching the schema per item
-    const system = `あなたは与えられた指示に基づき、厳密なJSONで四択問題を${count}問だけ生成します。各問題は複数正解の可能性があります。`;
-    const ksStr = JSON.stringify(targetKs)
     const baseContext = prompt && prompt.trim().length
         ? prompt.trim()
         : `ジャンル: ${genre ?? '未指定'}\nサブジャンル: ${subgenre ?? '未指定'}\nサブトピック: ${topic ?? '未指定'}`
-    const user = `${baseContext}\n各問題 i (1..${count}) の正解数は ks[i-1] 個に「ちょうど一致」させてください。ks = ${ksStr}\n出力は次のzodスキーマ(オブジェクト)に一致すること: { questions: Question[] }。Question = { question: string, choices: [string,string,string,string], answerIndexes: number[], explanation: string }。answerIndexes は 0..3 の重複なし整数配列。余計なテキストは一切含めず、JSONのみ。 問題数: ${count}`
 
-    // We will call model per question if array attempt fails, for robustness
-    try {
-            const { object } = await generateObject({
+    const concurrency = Math.max(1, Math.min(4, Math.floor(params.concurrency ?? 2)))
+    const results: (Question | undefined)[] = new Array(count)
+
+    const genOne = async (i: number) => {
+        const { object } = await generateObject({
             model: openai(model),
-            system,
-            prompt: user,
-            // Responses API requires an object-shaped JSON schema
-            schema: z.object({ questions: QuestionsArraySchema }),
-        }) as { object: any }
-
-        // object could be array or single
-        let arr: unknown
-        if (Array.isArray(object)) arr = object
-        else if (object && typeof object === 'object' && Array.isArray((object as any).questions)) arr = (object as any).questions
-        else arr = [object]
-
-        const parsed = QuestionsArraySchema.safeParse(arr)
-        if (parsed.success) {
-            // Enforce per-question K just in case the model drifted
-            const adjusted = parsed.data.slice(0, count).map((q, i) => ({
-                ...q,
-                answerIndexes: adjustAnswersToK((q as any).answerIndexes as number[] | undefined, targetKs[i])
-            }))
-            return adjusted.map(normalizeQuestion)
+            system: 'あなたは四択問題（複数正解可）を厳密なJSONで1問だけ生成します。',
+            prompt: `${baseContext}\nこの1問の正解数は「ちょうど ${targetKs[i]} 個」にしてください。出力は Question スキーマのJSONのみ。`,
+            schema: QuestionSchema,
+        })
+        const enforced = {
+            ...object,
+            answerIndexes: adjustAnswersToK((object as any).answerIndexes as number[] | undefined, targetKs[i])
         }
-    } catch (e) {
-        console.warn('batch generation failed, fallback to per-question', e)
+        results[i] = normalizeQuestion(enforced as Question)
     }
 
-    // Fallback: generate one by one to ensure we still return the desired count
-    const results: Question[] = []
-    for (let i = 0; i < count; i++) {
-        try {
-            const { object } = await generateObject({
-                model: openai(model),
-                system: 'あなたは四択問題（複数正解可）を厳密なJSONで1問だけ生成します。',
-                prompt: `${baseContext}\nこの1問の正解数は「ちょうど ${targetKs[i]} 個」にしてください。出力は Question スキーマのJSONのみ。`,
-                schema: QuestionSchema,
-            })
-            const enforced = {
-                ...object,
-                answerIndexes: adjustAnswersToK((object as any).answerIndexes as number[] | undefined, targetKs[i])
-            }
-            results.push(normalizeQuestion(enforced as Question))
-        } catch (e) {
-            console.error('single generation failed', i, e)
+    // Process in chunks to cap concurrency
+    for (let start = 0; start < count; start += concurrency) {
+        const end = Math.min(count, start + concurrency)
+        const batch = [] as Promise<void>[]
+        for (let i = start; i < end; i++) {
+            batch.push(
+                genOne(i).catch((e) => {
+                    console.error('single generation failed', i, e)
+                })
+            )
         }
+        await Promise.all(batch)
     }
-    return results
+
+    return results.filter((q): q is Question => Boolean(q))
 }
