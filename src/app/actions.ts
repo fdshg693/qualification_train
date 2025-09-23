@@ -1,7 +1,7 @@
 'use server'
 
 import { db } from '@/db/client'
-import { questions, genres, subgenres } from '@/db/schema'
+import { questions, genres, subgenres, prompts } from '@/db/schema'
 import { eq, and, like, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
@@ -129,5 +129,86 @@ export async function deleteSubgenre(id: number) {
     if (!id) return
     await db.delete(subgenres).where(eq(subgenres.id, id))
     revalidatePath('/admin/genres')
+    revalidatePath('/')
+}
+
+// ===== Prompts (テンプレート) =====
+const DEFAULT_PROMPT_NAME = 'default'
+const DEFAULT_PROMPT_TEMPLATE = `あなたはプロの出題者です。以下の条件を満たす四択問題を作成してください。
+
+ジャンル: {genre}
+サブジャンル: {subgenre}
+トピック: {topic}
+
+要件:
+- 問題文は日本語で簡潔に。
+- 選択肢は4つ、曖昧さを避ける。
+- 正解は複数でも可。
+- 初学者にも分かる短い解説を付ける。
+`
+
+export async function getPrompt(name?: string) {
+    const n = (name || DEFAULT_PROMPT_NAME).trim()
+    try {
+        const rows = await db.select().from(prompts).where(eq(prompts.name, n))
+        if (rows.length) return rows[0]
+    } catch (e) {
+        console.warn('[prompts] テーブル未作成または取得エラー。デフォルトを使用します。', e)
+    }
+    // 無ければデフォルトを返す（DB未作成時も扱えるよう仮想オブジェクト）
+    return { id: 0, name: n, template: DEFAULT_PROMPT_TEMPLATE, createdAt: new Date() }
+}
+
+export async function setPrompt(name: string, template: string) {
+    const n = (name || DEFAULT_PROMPT_NAME).trim()
+    const t = (template || '').trim()
+    if (!t) return
+    const existing = await db.select().from(prompts).where(eq(prompts.name, n))
+    if (existing.length) {
+        await db.update(prompts).set({ template: t }).where(eq(prompts.id, existing[0].id))
+    } else {
+        await db.insert(prompts).values({ name: n, template: t })
+    }
+    revalidatePath('/admin/prompts')
+    revalidatePath('/')
+}
+
+// List all prompts
+export async function listPrompts() {
+    try {
+        const rows = await db.select().from(prompts).orderBy(prompts.createdAt)
+        return rows
+    } catch (e) {
+        // テーブル未作成などの場合は空配列
+        return []
+    }
+}
+
+// Save (create/update) a prompt. If id provided, update that row; otherwise upsert by name.
+export async function savePrompt(params: { id?: number; name: string; template: string }) {
+    const id = params.id
+    const name = (params.name || DEFAULT_PROMPT_NAME).trim()
+    const template = (params.template || '').trim()
+    if (!template) return
+    if (id && id > 0) {
+        await db.update(prompts).set({ name, template }).where(eq(prompts.id, id))
+    } else {
+        // fallback to name-based upsert
+        const existing = await db.select().from(prompts).where(eq(prompts.name, name))
+        if (existing.length) {
+            await db.update(prompts).set({ template }).where(eq(prompts.id, existing[0].id))
+        } else {
+            await db.insert(prompts).values({ name, template })
+        }
+    }
+    revalidatePath('/admin/prompts')
+    revalidatePath('/')
+}
+
+// Delete a prompt by id
+export async function deletePrompt(id: number) {
+    if (!id) return
+    await db.delete(prompts).where(eq(prompts.id, id))
+    revalidatePath('/admin/prompts')
     revalidatePath('/')
 }

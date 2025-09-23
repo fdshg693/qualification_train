@@ -32,6 +32,10 @@ export default function HomePage() {
     const [answeredMap, setAnsweredMap] = useState<Record<number, boolean>>({})
     // 下段(プレビュー+チャット)の高さ(px)。ローカルに保存して復元。
     const [mainHeight, setMainHeight] = useState<number>(640)
+    // プロンプトテンプレ
+    const [promptName, setPromptName] = useState<string>('default')
+    const [prompts, setPrompts] = useState<{ name: string; template: string }[]>([])
+    const [promptPreview, setPromptPreview] = useState<string>('')
 
     const { toast, message } = useToast()
     const [isSaving, startSaving] = useTransition()
@@ -64,6 +68,24 @@ export default function HomePage() {
             })()
         return () => { canceled = true }
     }, [genre])
+
+    // プロンプト一覧取得（初回のみ）
+    useEffect(() => {
+        let canceled = false
+        ;(async () => {
+            try {
+                const res = await fetch('/api/prompts', { cache: 'no-store' })
+                const rows = (await res.json()) as any[]
+                if (canceled) return
+                const list = rows && rows.length ? rows : []
+                setPrompts(list)
+                // defaultが存在しない場合もUI上のデフォルト名は維持
+            } catch (e) {
+                console.warn('failed to load prompts', e)
+            }
+        })()
+        return () => { canceled = true }
+    }, [])
 
     // Fetch subgenres when genre changes
     useEffect(() => {
@@ -99,14 +121,16 @@ export default function HomePage() {
             const res = await fetch('/api/questions/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                // サブジャンル未選択(空)の場合はジャンルを subgenre として送ることで、ジャンル全体からの出題を生成ロジックに伝える
+                // プロンプトテンプレートで単純置換するため、そのままの値を送る
                 body: JSON.stringify({
-                    subgenre: (subgenre || genre) || undefined,
+                    genre: genre || undefined,
+                    subgenre: subgenre || undefined,
                     topic,
                     count,
                     model,
                     minCorrect,
                     maxCorrect,
+                    promptName: promptName || undefined,
                 }),
             })
             const data = await res.json() as { questions?: Question[] }
@@ -183,6 +207,19 @@ export default function HomePage() {
         try { if (typeof window !== 'undefined') window.localStorage.setItem('qt.mainHeight', String(mainHeight)) } catch { }
     }, [mainHeight])
 
+    // プロンプトプレビュー（クライアント側で単純置換）
+    useEffect(() => {
+        const tmpl = (prompts.find(p => p.name === promptName)?.template) ?? `ジャンル: {genre}\nサブジャンル: {subgenre}\nトピック: {topic}`
+        const map: Record<string, string> = {
+            '{genre}': genre ?? '',
+            '{subgenre}': subgenre ?? '',
+            '{topic}': topic ?? '',
+        }
+        let out = tmpl
+        for (const k of Object.keys(map)) out = out.split(k).join(map[k])
+        setPromptPreview(out)
+    }, [prompts, promptName, genre, subgenre, topic])
+
     // 仕切りバーのドラッグ開始
     function handleSeparatorMouseDown(e: ReactMouseEvent<HTMLDivElement>) {
         e.preventDefault()
@@ -216,6 +253,19 @@ export default function HomePage() {
                             </option>
                         ))}
                     </Select>
+                </label>
+                <label className="grid gap-2">
+                    <span className="text-sm font-medium">プロンプトテンプレート</span>
+                    <Select value={promptName} onChange={(e) => setPromptName(e.target.value)}>
+                        {/* default はDBが空でも選べる仮想テンプレ */}
+                        <option value="default">default</option>
+                        {prompts
+                            .filter((p) => p.name !== 'default')
+                            .map((p) => (
+                                <option key={p.name} value={p.name}>{p.name}</option>
+                            ))}
+                    </Select>
+                    <div className="text-xs text-slate-500">/admin/prompts でテンプレを編集・追加できます</div>
                 </label>
                 <label className="grid gap-2">
                     <span className="text-sm font-medium">サブジャンル</span>
@@ -297,6 +347,18 @@ export default function HomePage() {
                     <Button onClick={handleSaveAll} disabled={!results.length || isSaving || !genre} variant="outline">
                         {isSaving ? '保存中…' : '全て保存'}
                     </Button>
+                </div>
+                {/* 生成前プレビュー（折りたたみ） */}
+                <div className="mt-2">
+                    <details>
+                        <summary className="cursor-pointer text-sm font-medium select-none list-none">
+                            送信プロンプト（プレビュー）
+                            <span className="ml-2 text-xs text-slate-500">クリックで展開</span>
+                        </summary>
+                        <div className="mt-2">
+                            <pre className="whitespace-pre-wrap text-xs bg-slate-50 border rounded p-2 max-h-72 overflow-auto">{promptPreview}</pre>
+                        </div>
+                    </details>
                 </div>
             </section>
             {/* リサイズハンドル (フォームの直下) */}

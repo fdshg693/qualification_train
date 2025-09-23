@@ -7,12 +7,14 @@ import { generateObject } from 'ai'
 const QuestionsArraySchema = z.array(QuestionSchema)
 
 export type GenerateParams = {
+    genre?: string
     subgenre?: string
     topic?: string
     count: number // desired number of questions (1..50 reasonable)
     model?: string
     minCorrect?: number // desired minimum number of correct choices per question (1..4)
     maxCorrect?: number // desired maximum number of correct choices per question (1..4)
+    prompt?: string // composed prompt text from template
 }
 
 // Utility to shuffle choices and remap answerIndexes accordingly
@@ -36,7 +38,7 @@ function normalizeQuestion(q: Question): Question {
 }
 
 export async function generateQuestions(params: GenerateParams): Promise<Question[]> {
-    const { subgenre, topic } = params
+    const { genre, subgenre, topic, prompt } = params
     const count = Math.max(1, Math.min(50, Math.floor(params.count)))
     const allowedModels = ['gpt-5', 'gpt-5-mini', 'gpt-4.1', 'gpt40']
     const model = allowedModels.includes(params.model ?? '') ? (params.model as string) : 'gpt-4.1'
@@ -119,9 +121,12 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
 
     const openai = createOpenAI({ apiKey })
     // Ask model to return an array of JSON objects strictly matching the schema per item
-    const system = `あなたは与えられたサブジャンル/トピックに基づき、厳密なJSONで四択問題を${count}問だけ生成します。各問題は複数正解の可能性があります。`;
+    const system = `あなたは与えられた指示に基づき、厳密なJSONで四択問題を${count}問だけ生成します。各問題は複数正解の可能性があります。`;
     const ksStr = JSON.stringify(targetKs)
-    const user = `サブジャンル: ${subgenre ?? '未指定'} / サブトピック: ${topic ?? '未指定'}\n各問題 i (1..${count}) の正解数は ks[i-1] 個に「ちょうど一致」させてください。ks = ${ksStr}\n出力は次のzodスキーマ(オブジェクト)に一致すること: { questions: Question[] }。Question = { question: string, choices: [string,string,string,string], answerIndexes: number[], explanation: string }。answerIndexes は 0..3 の重複なし整数配列。余計なテキストは一切含めず、JSONのみ。 問題数: ${count}`
+    const baseContext = prompt && prompt.trim().length
+        ? prompt.trim()
+        : `ジャンル: ${genre ?? '未指定'}\nサブジャンル: ${subgenre ?? '未指定'}\nサブトピック: ${topic ?? '未指定'}`
+    const user = `${baseContext}\n各問題 i (1..${count}) の正解数は ks[i-1] 個に「ちょうど一致」させてください。ks = ${ksStr}\n出力は次のzodスキーマ(オブジェクト)に一致すること: { questions: Question[] }。Question = { question: string, choices: [string,string,string,string], answerIndexes: number[], explanation: string }。answerIndexes は 0..3 の重複なし整数配列。余計なテキストは一切含めず、JSONのみ。 問題数: ${count}`
 
     // We will call model per question if array attempt fails, for robustness
     try {
@@ -159,7 +164,7 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
             const { object } = await generateObject({
                 model: openai(model),
                 system: 'あなたは四択問題（複数正解可）を厳密なJSONで1問だけ生成します。',
-                prompt: `サブジャンル: ${subgenre ?? '未指定'} / サブトピック: ${topic ?? '未指定'}\nこの1問の正解数は「ちょうど ${targetKs[i]} 個」にしてください。出力は Question スキーマのJSONのみ。`,
+                prompt: `${baseContext}\nこの1問の正解数は「ちょうど ${targetKs[i]} 個」にしてください。出力は Question スキーマのJSONのみ。`,
                 schema: QuestionSchema,
             })
             const enforced = {

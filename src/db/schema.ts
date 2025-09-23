@@ -38,3 +38,14 @@ export const questions = pgTable('questions', {
 
 export type InsertQuestion = typeof questions.$inferInsert
 export type SelectQuestion = typeof questions.$inferSelect
+
+// ===== Prompts (for prompt template management) =====
+export const prompts = pgTable('prompts', {
+    id: serial('id').primaryKey(),
+    name: text('name').notNull().unique(),
+    template: text('template').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+})
+
+export type InsertPrompt = typeof prompts.$inferInsert
+export type SelectPrompt = typeof prompts.$inferSelect
