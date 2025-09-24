@@ -1,9 +1,12 @@
 import { getRandomQuestion } from '../actions'
+import { deleteQuestion } from '../actions'
 import { QuestionDisplay } from '@/components/question-display'
 import { Chat } from '@/components/chat'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { RefreshButton } from '@/components/refresh-button'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { ConfirmSubmitButton } from '@/components/ui/confirm-submit-button'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,15 +28,31 @@ export default async function PracticePage() {
             {q && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
                     <div className="space-y-4">
-                        <QuestionDisplay
-                            question={{
-                                question: q.question,
-                                choices: q.choices,
-                                answerIndexes: q.answerIndexes ?? [],
-                                explanations: (q.explanations as string[]),
-                            }}
-                            meta={{ genre: q.genre, topic: q.topic ?? undefined }}
-                        />
+                        <Card>
+                            <CardHeader className="flex items-center justify-between">
+                                <div className="font-medium">[{q.genre}] {q.question}</div>
+                                <form action={async (formData: FormData) => {
+                                    'use server'
+                                    const id = Number(formData.get('id'))
+                                    if (!id) return
+                                    await deleteQuestion(id)
+                                }}>
+                                    <input type="hidden" name="id" value={q.id} />
+                                    <ConfirmSubmitButton>削除</ConfirmSubmitButton>
+                                </form>
+                            </CardHeader>
+                            <CardContent>
+                                <QuestionDisplay
+                                    question={{
+                                        question: q.question,
+                                        choices: q.choices,
+                                        answerIndexes: q.answerIndexes ?? [],
+                                        explanations: (q.explanations as string[]),
+                                    }}
+                                    meta={{ genre: q.genre, topic: q.topic ?? undefined }}
+                                />
+                            </CardContent>
+                        </Card>
                     </div>
                     <div className="min-h-[480px] lg:min-h-[600px]">
                         <Chat

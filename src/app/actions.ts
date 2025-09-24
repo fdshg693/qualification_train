@@ -98,6 +98,7 @@ export async function deleteQuestion(id: number) {
     // Revalidate pages that list questions
     revalidatePath('/saved')
     revalidatePath('/')
+    revalidatePath('/practice')
 }
 
 // ===== Subgenres (サブジャンル) =====

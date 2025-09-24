@@ -39,6 +39,26 @@ export default async function SavedPage({ searchParams }: { searchParams?: Promi
                 <Input name="q" placeholder="キーワード" defaultValue={sp.q || ''} />
                 <Button type="submit">検索</Button>
             </form>
+            {/* 表示中の問題を一括削除 */}
+            {data.length > 0 && (
+                <form
+                    className="flex justify-end"
+                    action={async (formData: FormData) => {
+                        'use server'
+                        const ids = formData.getAll('ids').map((v) => Number(v)).filter((n) => Number.isFinite(n) && n > 0)
+                        for (const id of ids) {
+                            await deleteQuestion(id)
+                        }
+                    }}
+                >
+                    {data.map((row: any) => (
+                        <input key={row.id} type="hidden" name="ids" value={row.id} />
+                    ))}
+                    <ConfirmSubmitButton className="text-sm text-red-600" confirmMessage="表示中の問題をすべて削除します。よろしいですか？">
+                        表示中を一括削除
+                    </ConfirmSubmitButton>
+                </form>
+            )}
             {/* 下段は固定高エリア内で左右が独立スクロール */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch h-[70vh] min-h-[560px] overflow-hidden">
                 {/* 左: 問題一覧（内側スクロール） */}
