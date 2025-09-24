@@ -13,7 +13,7 @@ export const QuestionSchema = z.object({
                 ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'answerIndexes must be unique' })
             }
         }),
-    explanation: z.string(),
+    explanations: z.array(z.string()).length(4),
 })
 
 export type Question = z.infer<typeof QuestionSchema>

@@ -21,7 +21,7 @@ export default async function SavedPage({ searchParams }: { searchParams?: Promi
             question: row.question,
             choices: [choices[0], choices[1], choices[2], choices[3]] as [string, string, string, string],
             answerIndexes: answers,
-            explanation: row.explanation,
+            explanations: (row.explanation as string[]),
         })
     })
     return (
@@ -64,18 +64,19 @@ export default async function SavedPage({ searchParams }: { searchParams?: Promi
                                 </div>
                             </CardHeader>
                             <CardContent className="text-sm">
-                                <ol className="list-decimal pl-6 space-y-1">
+                                <ol className="list-decimal pl-6 space-y-2">
                                     {((row.choices as string[]) ?? []).map((c: string, i: number) => {
                                         const ans: number[] = (row.answers as number[]) ?? []
                                         const isCorrect = ans.includes(i)
                                         return (
                                             <li key={i} className={isCorrect ? 'font-semibold' : ''}>
-                                                {c} {isCorrect && <span className="ml-2 text-xs text-green-700">正解</span>}
+                                                <div>{c} {isCorrect && <span className="ml-2 text-xs text-green-700">正解</span>}</div>
+                                                <div className="text-xs text-slate-600 mt-1 pl-1">{(row.explanation as string[])[i] ?? ''}</div>
                                             </li>
                                         )
                                     })}
                                 </ol>
-                                <p className="text-slate-600 mt-2">解説: {row.explanation}</p>
+                                {/* 全体説明は廃止 */}
                             </CardContent>
                         </Card>
                     ))}

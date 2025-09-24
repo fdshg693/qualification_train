@@ -158,7 +158,7 @@ export default function HomePage() {
                     question: q.question,
                     choices: [q.choices[0], q.choices[1], q.choices[2], q.choices[3]],
                     answerIndexes: (q as any).answerIndexes ?? [],
-                    explanation: q.explanation,
+                    explanations: ((q as any).explanations ?? ['', '', '', '']) as [string, string, string, string],
                 })
                 toast(`問題${idx + 1}を保存しました`)
             } catch (e) {
@@ -180,7 +180,7 @@ export default function HomePage() {
                         question: q.question,
                         choices: [q.choices[0], q.choices[1], q.choices[2], q.choices[3]],
                         answerIndexes: (q as any).answerIndexes ?? [],
-                        explanation: q.explanation,
+                        explanations: ((q as any).explanations ?? ['', '', '', '']) as [string, string, string, string],
                     })
                 }
                 toast('全て保存しました')
@@ -427,7 +427,7 @@ export default function HomePage() {
                                                 </span>
                                             )}
                                         </div>
-                                        <ol className="list-decimal pl-6 space-y-1">
+                                        <ol className="list-decimal pl-6 space-y-2">
                                             {q.choices.map((c, i) => {
                                                 const selectedSet = new Set(selected)
                                                 const isSelected = selectedSet.has(i)
@@ -453,20 +453,24 @@ export default function HomePage() {
                                                             isWrong ? 'bg-red-100 line-through' : '',
                                                         ].filter(Boolean).join(' ')}
                                                     >
-                                                        {c}
+                                                        <div>{c}
                                                         {answered && isCorrect && (
                                                             <span className="ml-2 inline-block rounded bg-green-100 text-green-800 text-xs px-2 py-0.5 align-middle">正解</span>
                                                         )}
                                                         {answered && isWrong && (
                                                             <span className="ml-2 inline-block rounded bg-red-100 text-red-800 text-xs px-2 py-0.5 align-middle">不正解</span>
                                                         )}
+                                                        </div>
+                                                        {answered && (
+                                                            <div className="text-xs text-slate-600 mt-1 pl-1">
+                                                                {((q as any).explanations?.[i] ?? '')}
+                                                            </div>
+                                                        )}
                                                     </li>
                                                 )
                                             })}
                                         </ol>
-                                        {answered && (
-                                            <p className="text-slate-600">解説: {q.explanation}</p>
-                                        )}
+                                        {/* 全体の解説は廃止。各選択肢下に表示 */}
                                     </CardContent>
                                 </Card>
                             )

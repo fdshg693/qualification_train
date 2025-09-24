@@ -75,7 +75,7 @@ export function QuestionDisplay({ question, meta }: QuestionDisplayProps) {
                         </span>
                     )}
                 </div>
-                <ol className="list-decimal pl-6 space-y-1">
+                <ol className="list-decimal pl-6 space-y-2">
                     {items.map((item, i) => {
                         const isSelected = selected.has(i)
                         const correctSet = new Set((question as any).answerIndexes as number[])
@@ -100,20 +100,24 @@ export function QuestionDisplay({ question, meta }: QuestionDisplayProps) {
                                     isWrong ? 'bg-red-100 line-through' : '',
                                 ].filter(Boolean).join(' ')}
                             >
-                                {item.text}
+                                <div>{item.text}
                                 {answered && isCorrect && (
                                     <span className="ml-2 inline-block rounded bg-green-100 text-green-800 text-xs px-2 py-0.5 align-middle">正解</span>
                                 )}
                                 {answered && isWrong && (
                                     <span className="ml-2 inline-block rounded bg-red-100 text-red-800 text-xs px-2 py-0.5 align-middle">不正解</span>
                                 )}
+                                </div>
+                                {answered && (
+                                    <div className="text-xs text-slate-600 mt-1 pl-1">
+                                        {((question as any).explanations?.[item.originalIndex] ?? '')}
+                                    </div>
+                                )}
                             </li>
                         )
                     })}
                 </ol>
-                {answered && (
-                    <p className="text-slate-600">解説: {question.explanation}</p>
-                )}
+                {/* 全体の解説は廃止。各選択肢の下に表示。 */}
             </CardContent>
         </Card>
     )

@@ -5,6 +5,14 @@ CREATE TABLE "genres" (
 	CONSTRAINT "genres_name_unique" UNIQUE("name")
 );
 --> statement-breakpoint
+CREATE TABLE "prompts" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"name" text NOT NULL,
+	"template" text NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "prompts_name_unique" UNIQUE("name")
+);
+--> statement-breakpoint
 CREATE TABLE "questions" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"genre" text NOT NULL,
@@ -12,7 +20,7 @@ CREATE TABLE "questions" (
 	"question" text NOT NULL,
 	"choices" jsonb NOT NULL,
 	"answers" jsonb NOT NULL,
-	"explanation" text NOT NULL,
+	"explanation" jsonb NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint

@@ -10,7 +10,7 @@ const BodySchema = z.object({
         question: z.string(),
         choices: z.array(z.string()).length(4),
         answerIndexes: z.array(z.number().int().min(0).max(3)).max(4).default([]),
-        explanation: z.string()
+        explanations: z.array(z.string()).length(4)
     })).optional(),
     contextOptions: z.object({
         includeQuestion: z.boolean().optional(),
@@ -49,7 +49,10 @@ export async function POST(req: Request) {
                     lines.push(`Answers: (なし)`)    
                 }
             }
-            if (incExp) lines.push(`Explanation: ${q.explanation}`)
+            if (incExp) {
+                const expLines = q.explanations.map((e, idx) => ` - ${String.fromCharCode(65 + idx)}: ${e}`).join('\n')
+                lines.push(`Explanations (per choice):\n${expLines}`)
+            }
             return lines.join('\n')
         })
         .filter(Boolean)

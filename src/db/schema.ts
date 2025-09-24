@@ -32,7 +32,7 @@ export const questions = pgTable('questions', {
     question: text('question').notNull(),
     choices: jsonb('choices').$type<string[]>().notNull(),
     answers: jsonb('answers').$type<number[]>().notNull(),
-    explanation: text('explanation').notNull(),
+    explanation: jsonb('explanation').$type<string[]>().notNull(),
     createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
 })
 

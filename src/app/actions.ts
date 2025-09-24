@@ -11,7 +11,7 @@ type SaveParams = {
     question: string
     choices: [string, string, string, string]
     answerIndexes: number[]
-    explanation: string
+    explanations: [string, string, string, string]
 }
 
 export async function saveQuestion(params: SaveParams) {
@@ -21,7 +21,7 @@ export async function saveQuestion(params: SaveParams) {
         question: params.question,
         choices: params.choices,
         answers: Array.from(new Set((params.answerIndexes ?? []).filter((i) => i >= 0 && i < 4))).sort((a,b)=>a-b),
-        explanation: params.explanation,
+        explanation: params.explanations,
     })
 }
 
@@ -57,7 +57,7 @@ export async function getRandomQuestion() {
             (q.choices as string[])[3] ?? '',
         ] as [string, string, string, string],
         answerIndexes: (q.answers as number[]),
-        explanation: q.explanation,
+        explanations: (q.explanation as string[]),
         createdAt: q.createdAt,
     }
 }

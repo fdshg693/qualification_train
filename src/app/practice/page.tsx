@@ -30,7 +30,7 @@ export default async function PracticePage() {
                                 question: q.question,
                                 choices: q.choices,
                                 answerIndexes: q.answerIndexes ?? [],
-                                explanation: q.explanation,
+                                explanations: (q.explanations as string[]),
                             }}
                             meta={{ genre: q.genre, topic: q.topic ?? undefined }}
                         />
@@ -41,7 +41,7 @@ export default async function PracticePage() {
                                 question: q.question,
                                 choices: q.choices,
                                 answerIndexes: q.answerIndexes ?? [],
-                                explanation: q.explanation,
+                                explanations: (q.explanations as string[]),
                             }]}
                             title="AIチャット"
                             fullHeight
