@@ -45,6 +45,7 @@ export async function POST(req: Request) {
     // load prompt template (default)
     const row = await getPrompt(promptName || 'default')
     const template = row.template || ''
+    const system = (row as any).system || undefined
     function composePrompt(t: string) {
         const map: Record<string, string> = {
             '{genre}': genre ?? '',
@@ -60,6 +61,6 @@ export async function POST(req: Request) {
         return out
     }
     const composed = composePrompt(template)
-    const questions = await generateQuestions({ genre, subgenre, topic, count, model, minCorrect, maxCorrect, prompt: composed, concurrency })
+    const questions = await generateQuestions({ genre, subgenre, topic, count, model, minCorrect, maxCorrect, prompt: composed, system, concurrency })
     return NextResponse.json({ questions })
 }

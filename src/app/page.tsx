@@ -36,8 +36,9 @@ export default function HomePage() {
     const [mainHeight, setMainHeight] = useState<number>(640)
     // プロンプトテンプレ
     const [promptName, setPromptName] = useState<string>('default')
-    const [prompts, setPrompts] = useState<{ name: string; template: string }[]>([])
+    const [prompts, setPrompts] = useState<{ name: string; template: string; system?: string | null }[]>([])
     const [promptPreview, setPromptPreview] = useState<string>('')
+    const [systemPreview, setSystemPreview] = useState<string>('')
 
     const { toast, message } = useToast()
     const [isSaving, startSaving] = useTransition()
@@ -77,7 +78,7 @@ export default function HomePage() {
         ;(async () => {
             try {
                 const res = await fetch('/api/prompts', { cache: 'no-store' })
-                const rows = (await res.json()) as any[]
+                const rows = (await res.json()) as { name: string; template: string; system?: string | null }[]
                 if (canceled) return
                 const list = rows && rows.length ? rows : []
                 setPrompts(list)
@@ -212,7 +213,10 @@ export default function HomePage() {
 
     // プロンプトプレビュー（クライアント側で単純置換）
     useEffect(() => {
-        const tmpl = (prompts.find(p => p.name === promptName)?.template) ?? `ジャンル: {genre}\nサブジャンル: {subgenre}\nトピック: {topic}\n問題数: {count}\n正解数の範囲: {minCorrect}〜{maxCorrect}\n並列度: {concurrency}`
+        const DEFAULT_USER_TEMPLATE = `ジャンル: {genre}\nサブジャンル: {subgenre}\nトピック: {topic}\n問題数: {count}\n正解数の範囲: {minCorrect}〜{maxCorrect}\n並列度: {concurrency}`
+        const DEFAULT_SYSTEM = 'あなたは四択問題（複数正解可）を厳密なJSONで生成する出題エンジンです。各選択肢ごとに短い理由（正解/不正解いずれでも）を explanations 配列で返してください（choices と同じ順序・同じ長さ）。余計な文字列を含めないでください。'
+        const selected = prompts.find(p => p.name === promptName)
+        const tmpl = selected?.template ?? DEFAULT_USER_TEMPLATE
         const map: Record<string, string> = {
             '{genre}': genre ?? '',
             '{subgenre}': subgenre ?? '',
@@ -225,6 +229,7 @@ export default function HomePage() {
         let out = tmpl
         for (const k of Object.keys(map)) out = out.split(k).join(map[k])
         setPromptPreview(out)
+        setSystemPreview((selected?.system ?? DEFAULT_SYSTEM) || DEFAULT_SYSTEM)
     }, [prompts, promptName, genre, subgenre, topic, count, minCorrect, maxCorrect, concurrency])
 
     // 仕切りバーのドラッグ開始
@@ -247,132 +252,121 @@ export default function HomePage() {
 
     return (
         <div className="flex flex-col min-h-screen">
-            <h1 className="text-2xl font-bold mb-4 shrink-0">四択問題ジェネレーター</h1>
-            {/* 生成フォーム */}
-            <section className="grid gap-4 mb-4 shrink-0">
-                <label className="grid gap-2">
-                    <span className="text-sm font-medium">ジャンル</span>
-                    <Select value={genre} onChange={(e) => setGenre(e.target.value)}>
-                        {!genres.length && <option value="">ジャンル未登録</option>}
-                        {genres.map((g) => (
-                            <option key={g.id} value={g.name}>
-                                {g.name}
-                            </option>
-                        ))}
-                    </Select>
-                </label>
-                <label className="grid gap-2">
-                    <span className="text-sm font-medium">プロンプトテンプレート</span>
-                    <Select value={promptName} onChange={(e) => setPromptName(e.target.value)}>
-                        {/* default はDBが空でも選べる仮想テンプレ */}
-                        <option value="default">default</option>
-                        {prompts
-                            .filter((p) => p.name !== 'default')
-                            .map((p) => (
+            <h1 className="text-2xl font-bold mb-2 shrink-0">四択問題ジェネレーター</h1>
+            {/* 生成フォーム（コンパクトツールバー） */}
+            <section className="mb-3 shrink-0">
+                <div className="flex flex-wrap items-end gap-2">
+                    <div className="flex flex-col gap-1">
+                        <span className="text-xs text-slate-600">ジャンル</span>
+                        <Select className="h-8 px-2 py-1 text-sm" value={genre} onChange={(e) => setGenre(e.target.value)}>
+                            {!genres.length && <option value="">ジャンル未登録</option>}
+                            {genres.map((g) => (
+                                <option key={g.id} value={g.name}>{g.name}</option>
+                            ))}
+                        </Select>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <span className="text-xs text-slate-600">サブジャンル</span>
+                        <Select className="h-8 px-2 py-1 text-sm min-w-[12rem]" value={subgenre} onChange={(e) => setSubgenre(e.target.value)}>
+                            <option value="">(未選択 / 全体)</option>
+                            {!subgenres.length && <option value="" disabled>サブジャンル未登録</option>}
+                            {subgenres.map((s) => (
+                                <option key={s.id} value={s.name}>{s.name}</option>
+                            ))}
+                        </Select>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <span className="text-xs text-slate-600">テンプレ</span>
+                        <Select className="h-8 px-2 py-1 text-sm min-w-[10rem]" value={promptName} onChange={(e) => setPromptName(e.target.value)}>
+                            <option value="default">default</option>
+                            {prompts.filter((p) => p.name !== 'default').map((p) => (
                                 <option key={p.name} value={p.name}>{p.name}</option>
                             ))}
-                    </Select>
-                    <div className="text-xs text-slate-500">/admin/prompts でテンプレを編集・追加できます</div>
-                </label>
-                <label className="grid gap-2">
-                    <span className="text-sm font-medium">サブジャンル</span>
-                    <Select value={subgenre} onChange={(e) => setSubgenre(e.target.value)}>
-                        {/* 空(=ジャンル全体) の明示的な選択肢 */}
-                        <option value="">(未選択 / ジャンル全体)</option>
-                        {!subgenres.length && <option value="" disabled>サブジャンル未登録</option>}
-                        {subgenres.map((s) => (
-                            <option key={s.id} value={s.name}>
-                                {s.name}
-                            </option>
-                        ))}
-                    </Select>
-                </label>
-                <label className="grid gap-2">
-                    <span className="text-sm font-medium">サブトピック・出題範囲（任意）</span>
-                    <Input
-                        placeholder="例: OSI参照モデル, TCP/UDP"
-                        value={topic}
-                        onChange={(e) => setTopic(e.target.value)}
-                    />
-                </label>
-                <label className="grid gap-2">
-                    <span className="text-sm font-medium">生成数</span>
-                    <Input type="number" min={1} max={50} value={count} onChange={(e) => setCount(Number(e.target.value) || 1)} />
-                </label>
-                <div className="grid gap-2">
-                    <span className="text-sm font-medium">正解の数（最小～最大）</span>
-                    <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2">
-                            <span className="text-xs text-slate-500">最小</span>
+                        </Select>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <span className="text-xs text-slate-600">トピック</span>
+                        <Input className="h-8 px-2 py-1 text-sm min-w-[14rem]" placeholder="例: OSI参照モデル" value={topic} onChange={(e) => setTopic(e.target.value)} />
+                    </div>
+                    <div className="flex flex-col gap-1 w-28">
+                        <span className="text-xs text-slate-600">生成数</span>
+                        <Input className="h-8 px-2 py-1 text-sm" type="number" min={1} max={50} value={count} onChange={(e) => setCount(Number(e.target.value) || 1)} />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <span className="text-xs text-slate-600">正解数</span>
+                        <div className="flex items-center gap-1">
                             <Input
+                                className="h-8 px-2 py-1 text-sm w-14"
                                 type="number"
                                 min={1}
                                 max={4}
                                 value={minCorrect}
                                 onChange={(e) => {
                                     const v = Math.max(1, Math.min(4, Number(e.target.value) || 1))
-                                    // 最小が最大を超えないように調整
                                     setMinCorrect(v)
                                     if (v > maxCorrect) setMaxCorrect(v)
                                 }}
-                                className="w-24"
                             />
-                        </div>
-                        <span>〜</span>
-                        <div className="flex items-center gap-2">
-                            <span className="text-xs text-slate-500">最大</span>
+                            <span className="text-xs text-slate-500">〜</span>
                             <Input
+                                className="h-8 px-2 py-1 text-sm w-14"
                                 type="number"
                                 min={1}
                                 max={4}
                                 value={maxCorrect}
                                 onChange={(e) => {
                                     const v = Math.max(1, Math.min(4, Number(e.target.value) || 1))
-                                    // 最大が最小未満にならないように調整
                                     setMaxCorrect(v)
                                     if (v < minCorrect) setMinCorrect(v)
                                 }}
-                                className="w-24"
                             />
                         </div>
                     </div>
-                    <p className="text-xs text-slate-500">各問題の正解数はこの範囲からランダムに選ばれます（1〜4）。</p>
+                    <div className="flex flex-col gap-1">
+                        <span className="text-xs text-slate-600">モデル</span>
+                        <Select className="h-8 px-2 py-1 text-sm" value={model} onChange={(e) => setModel(e.target.value)}>
+                            <option value="gpt-5">gpt-5</option>
+                            <option value="gpt-5-mini">gpt-5-mini</option>
+                            <option value="gpt-4.1">gpt-4.1</option>
+                            <option value="gpt40">gpt40</option>
+                        </Select>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <span className="text-xs text-slate-600">並列度</span>
+                        <Select className="h-8 px-2 py-1 text-sm w-16" value={String(concurrency)} onChange={(e) => setConcurrency(Math.max(2, Math.min(4, Number(e.target.value) || 2)))}>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                        </Select>
+                    </div>
+                    <div className="ml-auto flex items-center gap-2">
+                        <Button className="h-8 px-3 text-sm" onClick={handleGenerate} disabled={loading || !genre}>
+                            {loading ? '生成中…' : '生成'}
+                        </Button>
+                        <Button className="h-8 px-3 text-sm" onClick={handleSaveAll} disabled={!results.length || isSaving || !genre} variant="outline">
+                            {isSaving ? '保存中…' : '全て保存'}
+                        </Button>
+                    </div>
                 </div>
-                <label className="grid gap-2">
-                    <span className="text-sm font-medium">モデル</span>
-                    <Select value={model} onChange={(e) => setModel(e.target.value)}>
-                        <option value="gpt-5">gpt-5</option>
-                        <option value="gpt-5-mini">gpt-5-mini</option>
-                        <option value="gpt-4.1">gpt-4.1</option>
-                        <option value="gpt40">gpt40</option>
-                    </Select>
-                </label>
-                <label className="grid gap-2">
-                    <span className="text-sm font-medium">並列度（同時生成数）</span>
-                    <Select value={String(concurrency)} onChange={(e) => setConcurrency(Math.max(2, Math.min(4, Number(e.target.value) || 2)))}>
-                        <option value="2">2</option>
-                        <option value="3">3</option>
-                        <option value="4">4</option>
-                    </Select>
-                    <div className="text-xs text-slate-500">同時に生成するリクエスト数（2〜4）。大きくしすぎるとレート制限の可能性があります。</div>
-                </label>
-                <div className="flex items-center gap-3 mt-2">
-                    <Button onClick={handleGenerate} disabled={loading || !genre}>
-                        {loading ? '生成中…' : '生成'}
-                    </Button>
-                    <Button onClick={handleSaveAll} disabled={!results.length || isSaving || !genre} variant="outline">
-                        {isSaving ? '保存中…' : '全て保存'}
-                    </Button>
-                </div>
-                {/* 生成前プレビュー（折りたたみ） */}
+                {/* ヒント行 */}
+                <div className="mt-1 text-[11px] text-slate-500">/admin/prompts でテンプレを編集・追加できます</div>
+
+                {/* 生成前プレビュー（System & User） */}
                 <div className="mt-2">
                     <details>
                         <summary className="cursor-pointer text-sm font-medium select-none list-none">
-                            送信プロンプト（プレビュー）
-                            <span className="ml-2 text-xs text-slate-500">クリックで展開</span>
+                            プロンプト（プレビュー）
+                            <span className="ml-2 text-xs text-slate-500">クリックで展開（system / user）</span>
                         </summary>
-                        <div className="mt-2">
-                            <pre className="whitespace-pre-wrap text-xs bg-slate-50 border rounded p-2 max-h-72 overflow-auto">{promptPreview}</pre>
+                        <div className="mt-2 grid gap-2 md:grid-cols-2">
+                            <div>
+                                <div className="text-xs font-semibold text-slate-600 mb-1">System</div>
+                                <pre className="whitespace-pre-wrap text-xs bg-slate-50 border rounded p-2 max-h-72 overflow-auto">{systemPreview}</pre>
+                            </div>
+                            <div>
+                                <div className="text-xs font-semibold text-slate-600 mb-1">User</div>
+                                <pre className="whitespace-pre-wrap text-xs bg-slate-50 border rounded p-2 max-h-72 overflow-auto">{promptPreview}</pre>
+                            </div>
                         </div>
                     </details>
                 </div>
@@ -391,7 +385,7 @@ export default function HomePage() {
                 {/* 問題プレビュー列 */}
                 <section className="basis-1/2 flex flex-col min-h-0 overflow-hidden">
                     <h2 className="text-xl font-semibold mb-2 shrink-0">プレビュー ({results.length}問)</h2>
-                    <div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-4 custom-scroll">
+                    <div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-3 custom-scroll">
                         {!results.length && <Card><CardContent className="text-sm text-slate-500">まだ生成していません</CardContent></Card>}
                         {results.map((q, idx) => {
                             const answered = answeredMap[idx] || false
@@ -427,7 +421,7 @@ export default function HomePage() {
                                                 </span>
                                             )}
                                         </div>
-                                        <ol className="list-decimal pl-6 space-y-2">
+                                        <ol className="list-decimal pl-5 space-y-1.5">
                                             {q.choices.map((c, i) => {
                                                 const selectedSet = new Set(selected)
                                                 const isSelected = selectedSet.has(i)

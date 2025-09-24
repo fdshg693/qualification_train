@@ -44,6 +44,8 @@ export const prompts = pgTable('prompts', {
     id: serial('id').primaryKey(),
     name: text('name').notNull().unique(),
     template: text('template').notNull(),
+    // Optional system prompt for model instructions
+    system: text('system'),
     createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
 })
 

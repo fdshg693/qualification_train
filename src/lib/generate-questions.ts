@@ -13,6 +13,7 @@ export type GenerateParams = {
     minCorrect?: number // desired minimum number of correct choices per question (1..4)
     maxCorrect?: number // desired maximum number of correct choices per question (1..4)
     prompt?: string // composed prompt text from template
+    system?: string // system prompt (admin-manageable)
     concurrency?: number // parallelism for per-question generation (1..4); default 2
 }
 
@@ -136,7 +137,7 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
     const genOne = async (i: number) => {
         const { object } = await generateObject({
             model: openai(model),
-            system: 'あなたは四択問題（複数正解可）を厳密なJSONで1問だけ生成します。各選択肢ごとに短い理由（正解/不正解のどちらでも）を explanations 配列で返してください（choices と同じ順序・同じ長さ）。',
+            system: (params.system && params.system.trim()) || 'あなたは四択問題（複数正解可）を厳密なJSONで1問だけ生成します。各選択肢ごとに短い理由（正解/不正解のどちらでも）を explanations 配列で返してください（choices と同じ順序・同じ長さ）。',
             prompt: `${baseContext}\nこの1問の正解数は「ちょうど ${targetKs[i]} 個」にしてください。出力は Question スキーマのJSONのみ（余計な文字列なし）。`,
             schema: QuestionSchema,
         })

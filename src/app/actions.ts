@@ -149,6 +149,9 @@ const DEFAULT_PROMPT_TEMPLATE = `あなたはプロの出題者です。以下�
 - 初学者にも分かる短い解説を付ける。
 `
 
+// デフォルトの system プロンプト（モデルへの基本指示）
+const DEFAULT_SYSTEM_PROMPT = 'あなたは四択問題（複数正解可）を厳密なJSONで生成する出題エンジンです。各選択肢ごとに短い理由（正解/不正解いずれでも）を explanations 配列で返してください（choices と同じ順序・同じ長さ）。余計な文字列を含めないでください。'
+
 export async function getPrompt(name?: string) {
     const n = (name || DEFAULT_PROMPT_NAME).trim()
     try {
@@ -158,18 +161,19 @@ export async function getPrompt(name?: string) {
         console.warn('[prompts] テーブル未作成または取得エラー。デフォルトを使用します。', e)
     }
     // 無ければデフォルトを返す（DB未作成時も扱えるよう仮想オブジェクト）
-    return { id: 0, name: n, template: DEFAULT_PROMPT_TEMPLATE, createdAt: new Date() }
+    return { id: 0, name: n, template: DEFAULT_PROMPT_TEMPLATE, system: DEFAULT_SYSTEM_PROMPT, createdAt: new Date() } as any
 }
 
-export async function setPrompt(name: string, template: string) {
+export async function setPrompt(name: string, template: string, system?: string) {
     const n = (name || DEFAULT_PROMPT_NAME).trim()
     const t = (template || '').trim()
+    const s = (system || '').trim()
     if (!t) return
     const existing = await db.select().from(prompts).where(eq(prompts.name, n))
     if (existing.length) {
-        await db.update(prompts).set({ template: t }).where(eq(prompts.id, existing[0].id))
+        await db.update(prompts).set({ template: t, system: s || null }).where(eq(prompts.id, existing[0].id))
     } else {
-        await db.insert(prompts).values({ name: n, template: t })
+        await db.insert(prompts).values({ name: n, template: t, system: s || null })
     }
     revalidatePath('/admin/prompts')
     revalidatePath('/')
@@ -187,20 +191,21 @@ export async function listPrompts() {
 }
 
 // Save (create/update) a prompt. If id provided, update that row; otherwise upsert by name.
-export async function savePrompt(params: { id?: number; name: string; template: string }) {
+export async function savePrompt(params: { id?: number; name: string; template: string; system?: string }) {
     const id = params.id
     const name = (params.name || DEFAULT_PROMPT_NAME).trim()
     const template = (params.template || '').trim()
+    const system = (params.system || '').trim()
     if (!template) return
     if (id && id > 0) {
-        await db.update(prompts).set({ name, template }).where(eq(prompts.id, id))
+        await db.update(prompts).set({ name, template, system: system || null }).where(eq(prompts.id, id))
     } else {
         // fallback to name-based upsert
         const existing = await db.select().from(prompts).where(eq(prompts.name, name))
         if (existing.length) {
-            await db.update(prompts).set({ template }).where(eq(prompts.id, existing[0].id))
+            await db.update(prompts).set({ template, system: system || null }).where(eq(prompts.id, existing[0].id))
         } else {
-            await db.insert(prompts).values({ name, template })
+            await db.insert(prompts).values({ name, template, system: system || null })
         }
     }
     revalidatePath('/admin/prompts')

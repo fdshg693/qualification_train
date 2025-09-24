@@ -21,7 +21,8 @@ export default async function AdminPromptsPage() {
                             'use server'
                             const name = String(formData.get('name') || '')
                             const template = String(formData.get('template') || '')
-                            await savePrompt({ name, template })
+                            const system = String(formData.get('system') || '')
+                            await savePrompt({ name, template, system })
                         }}
                     >
                         <div className="grid gap-2">
@@ -39,6 +40,15 @@ export default async function AdminPromptsPage() {
                                 利用可能なプレースホルダー: {`{genre}`}, {`{subgenre}`}, {`{topic}`}, {`{count}`}, {`{minCorrect}`}, {`{maxCorrect}` }。これらは送信時に置換されます。
                                 条件分岐などの複雑なロジックはサポートしません。
                             </p>
+                        </div>
+                        <div className="grid gap-2">
+                            <label className="text-sm font-medium">system（モデルへの基本指示）</label>
+                            <textarea
+                                name="system"
+                                defaultValue={defaultRow.system}
+                                className="min-h-[120px] w-full rounded border p-2 font-mono text-sm"
+                            />
+                            <p className="text-xs text-slate-500">JSONスキーマに沿って1問ずつ出力する等の厳密な指示をここで管理します。</p>
                         </div>
                         <div className="flex gap-2">
                             <Button type="submit">追加</Button>
@@ -60,7 +70,8 @@ export default async function AdminPromptsPage() {
                                     const id = Number(formData.get('id'))
                                     const name = String(formData.get('name') || '')
                                     const template = String(formData.get('template') || '')
-                                    await savePrompt({ id, name, template })
+                                    const system = String(formData.get('system') || '')
+                                    await savePrompt({ id, name, template, system })
                                 }}
                             >
                                 <input type="hidden" name="id" defaultValue={row.id} />
@@ -78,6 +89,14 @@ export default async function AdminPromptsPage() {
                                     <p className="text-xs text-slate-500">
                                         利用可能なプレースホルダー: {`{genre}`}, {`{subgenre}`}, {`{topic}`}, {`{count}`}, {`{minCorrect}`}, {`{maxCorrect}` }。これらは送信時に置換されます。
                                     </p>
+                                </div>
+                                <div className="grid gap-2">
+                                    <label className="text-sm font-medium">system（モデルへの基本指示）</label>
+                                    <textarea
+                                        name="system"
+                                        defaultValue={row.system ?? defaultRow.system}
+                                        className="min-h-[120px] w-full rounded border p-2 font-mono text-sm"
+                                    />
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <Button type="submit" variant="secondary">更新</Button>
