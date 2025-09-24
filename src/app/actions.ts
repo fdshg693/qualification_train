@@ -9,19 +9,26 @@ type SaveParams = {
     genre: string
     topic?: string
     question: string
-    choices: [string, string, string, string]
+    choices: string[]
     answerIndexes: number[]
-    explanations: [string, string, string, string]
+    explanations: string[]
 }
 
 export async function saveQuestion(params: SaveParams) {
+    const choices = Array.isArray(params.choices) ? params.choices.filter((s) => typeof s === 'string') : []
+    const explanations = Array.isArray(params.explanations) ? params.explanations.filter((s) => typeof s === 'string') : []
+    // ensure explanations length matches choices length
+    while (explanations.length < choices.length) explanations.push('')
+    if (explanations.length > choices.length) explanations.splice(choices.length)
+    const maxIdx = Math.max(0, choices.length - 1)
+    const answers = Array.from(new Set((params.answerIndexes ?? []).filter((i) => i >= 0 && i <= maxIdx))).sort((a,b)=>a-b)
     await db.insert(questions).values({
         genre: params.genre,
         topic: params.topic ?? null,
         question: params.question,
-        choices: params.choices,
-        answers: Array.from(new Set((params.answerIndexes ?? []).filter((i) => i >= 0 && i < 4))).sort((a,b)=>a-b),
-        explanation: params.explanations,
+        choices,
+        answers,
+        explanation: explanations,
     })
 }
 
@@ -50,14 +57,9 @@ export async function getRandomQuestion() {
         genre: q.genre,
         topic: q.topic ?? undefined,
         question: q.question,
-        choices: [
-            (q.choices as string[])[0] ?? '',
-            (q.choices as string[])[1] ?? '',
-            (q.choices as string[])[2] ?? '',
-            (q.choices as string[])[3] ?? '',
-        ] as [string, string, string, string],
-        answerIndexes: (q.answers as number[]),
-        explanations: (q.explanation as string[]),
+        choices: (q.choices as string[]) ?? [],
+        answerIndexes: ((q.answers as number[]) ?? []).filter((i) => Number.isInteger(i) && i >= 0 && i < ((q.choices as string[]) ?? []).length),
+        explanations: (q.explanation as string[]) ?? [],
         createdAt: q.createdAt,
     }
 }
@@ -135,23 +137,24 @@ export async function deleteSubgenre(id: number) {
 
 // ===== Prompts (テンプレート) =====
 const DEFAULT_PROMPT_NAME = 'default'
-const DEFAULT_PROMPT_TEMPLATE = `あなたはプロの出題者です。以下の条件を満たす四択問題を作成してください。
+const DEFAULT_PROMPT_TEMPLATE = `あなたはプロの出題者です。以下の条件を満たす多肢選択式の問題を作成してください。
 
 ジャンル: {genre}
 サブジャンル: {subgenre}
 トピック: {topic}
 問題数: {count}
+選択肢数（各問）: {choiceCount}
 正解数（各問）: {minCorrect}〜{maxCorrect}
 
 要件:
 - 問題文は日本語で簡潔に。
-- 選択肢は4つ、曖昧さを避ける。
+- 選択肢は {choiceCount} 個、曖昧さを避ける。
 - 正解は複数でも可。
-- 初学者にも分かる短い解説を付ける。
+- 初学者にも分かる短い解説を各選択肢ごとに付ける。
 `
 
 // デフォルトの system プロンプト（モデルへの基本指示）
-const DEFAULT_SYSTEM_PROMPT = 'あなたは四択問題（複数正解可）を厳密なJSONで生成する出題エンジンです。各選択肢ごとに短い理由（正解/不正解いずれでも）を explanations 配列で返してください（choices と同じ順序・同じ長さ）。余計な文字列を含めないでください。'
+const DEFAULT_SYSTEM_PROMPT = 'あなたは多肢選択式問題（複数正解可）を厳密なJSONで生成する出題エンジンです。choices/explanations は同数、選択肢数は指示に従い、explanations は各選択肢の理由（正解/不正解いずれでも）を短く返してください。余計な文字列を含めないでください。'
 
 export async function getPrompt(name?: string) {
     const n = (name || DEFAULT_PROMPT_NAME).trim()

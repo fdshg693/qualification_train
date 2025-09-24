@@ -15,15 +15,17 @@ export type GenerateParams = {
     prompt?: string // composed prompt text from template
     system?: string // system prompt (admin-manageable)
     concurrency?: number // parallelism for per-question generation (1..4); default 2
+    choiceCount?: number // number of choices per question (2..8)
 }
 
 // Utility to shuffle choices and remap answerIndexes accordingly
 function normalizeQuestion(q: Question): Question {
-    const origChoices = Array.isArray(q.choices) ? q.choices.slice(0, 4) : []
-    const origExps = Array.isArray((q as any).explanations) ? ((q as any).explanations as string[]).slice(0, 4) : []
-    while (origChoices.length < 4) origChoices.push('')
-    while (origExps.length < 4) origExps.push('')
-    const order = [0, 1, 2, 3]
+    const len = Math.max(2, Math.min(8, Array.isArray(q.choices) ? q.choices.length : 4))
+    const origChoices = Array.isArray(q.choices) ? q.choices.slice(0, len) : []
+    const origExps = Array.isArray((q as any).explanations) ? ((q as any).explanations as string[]).slice(0, len) : []
+    while (origChoices.length < len) origChoices.push('')
+    while (origExps.length < len) origExps.push('')
+    const order = Array.from({ length: len }, (_, i) => i)
     for (let i = order.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1))
         ;[order[i], order[j]] = [order[j], order[i]]
@@ -34,10 +36,10 @@ function normalizeQuestion(q: Question): Question {
     const pos: Record<number, number> = {}
     for (let newIdx = 0; newIdx < order.length; newIdx++) pos[order[newIdx]] = newIdx
     const origAns = Array.isArray((q as any).answerIndexes) ? (q as any).answerIndexes as number[] : []
-    const newAns = origAns.map((i) => pos[i]).filter((i) => i >= 0 && i < 4)
+    const newAns = origAns.map((i) => pos[i]).filter((i) => i >= 0 && i < len)
     // ensure uniqueness and sorted for stable UI
     const uniqueSorted = Array.from(new Set(newAns)).sort((a, b) => a - b)
-    return { question: q.question, choices: newChoices as [string, string, string, string], answerIndexes: uniqueSorted, explanations: newExps as [string, string, string, string] } as Question
+    return { question: q.question, choices: newChoices, answerIndexes: uniqueSorted, explanations: newExps } as Question
 }
 
 export async function generateQuestions(params: GenerateParams): Promise<Question[]> {
@@ -46,10 +48,11 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
     const allowedModels = ['gpt-5', 'gpt-5-mini', 'gpt-4.1', 'gpt40']
     const model = allowedModels.includes(params.model ?? '') ? (params.model as string) : 'gpt-4.1'
     const apiKey = process.env.OPENAI_API_KEY
+    const choiceCount = Math.max(2, Math.min(8, Math.floor(params.choiceCount ?? 4)))
 
     // Clamp and sanitize min/max corrects (default to 1..1 to keep single-answer if unspecified)
-    const minC0 = Math.max(1, Math.min(4, Math.floor(params.minCorrect ?? 1)))
-    const maxC0 = Math.max(1, Math.min(4, Math.floor(params.maxCorrect ?? minC0)))
+    const minC0 = Math.max(1, Math.min(choiceCount, Math.floor(params.minCorrect ?? 1)))
+    const maxC0 = Math.max(1, Math.min(choiceCount, Math.floor(params.maxCorrect ?? minC0)))
     const minC = Math.min(minC0, maxC0)
     const maxC = Math.max(minC0, maxC0)
 
@@ -62,16 +65,16 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
 
     // Helpers to enforce exactly K answers within 0..3
     function sampleIndicesExactlyK(k: number): number[] {
-        const indices = [0, 1, 2, 3]
+        const indices = Array.from({ length: choiceCount }, (_, i) => i)
         for (let i = indices.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1))
             ;[indices[i], indices[j]] = [indices[j], indices[i]]
         }
-        return indices.slice(0, Math.max(0, Math.min(4, k))).sort((a, b) => a - b)
+        return indices.slice(0, Math.max(0, Math.min(choiceCount, k))).sort((a, b) => a - b)
     }
 
     function adjustAnswersToK(ans: number[] | undefined, k: number): number[] {
-        const set = new Set((ans ?? []).filter((i) => Number.isInteger(i) && i >= 0 && i < 4))
+        const set = new Set((ans ?? []).filter((i) => Number.isInteger(i) && i >= 0 && i < choiceCount))
         let arr = Array.from(set)
         if (arr.length > k) {
             // randomly drop extras
@@ -81,7 +84,7 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
             }
             arr = arr.slice(0, k)
         } else if (arr.length < k) {
-            const pool = [0, 1, 2, 3].filter((i) => !set.has(i))
+            const pool = Array.from({ length: choiceCount }, (_, i) => i).filter((i) => !set.has(i))
             for (let i = pool.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1))
                 ;[pool[i], pool[j]] = [pool[j], pool[i]]
@@ -111,12 +114,14 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
             const k = targetKs[n]
             const ansIdx = sampleIndicesExactlyK(k)
             // Build simple per-choice explanations for mock
-            const exps = (item.choices as string[]).map((c, i) =>
+            const choices = (item.choices as string[]).slice(0, choiceCount)
+            while (choices.length < choiceCount) choices.push('')
+            const exps = choices.map((c, i) =>
                 ansIdx.includes(i) ? `${c} が正解である理由: 定義や仕様に合致します。` : `${c} が不正解である理由: 定義や仕様に反します。`
-            ) as [string, string, string, string]
+            )
             out.push(normalizeQuestion({
                 question: `(${n + 1}) ${item.q}`,
-                choices: item.choices as [string, string, string, string],
+                choices: choices,
                 // Enforce exactly k correct options in mock
                 answerIndexes: ansIdx,
                 explanations: exps,
@@ -129,7 +134,7 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
     const openai = createOpenAI({ apiKey })
     const baseContext = prompt && prompt.trim().length
         ? prompt.trim()
-        : `ジャンル: ${genre ?? '未指定'}\nサブジャンル: ${subgenre ?? '未指定'}\nサブトピック: ${topic ?? '未指定'}`
+        : `ジャンル: ${genre ?? '未指定'}\nサブジャンル: ${subgenre ?? '未指定'}\nサブトピック: ${topic ?? '未指定'}\n選択肢数: ${choiceCount}`
 
     const concurrency = Math.max(1, Math.min(4, Math.floor(params.concurrency ?? 2)))
     const results: (Question | undefined)[] = new Array(count)
@@ -137,12 +142,15 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
     const genOne = async (i: number) => {
         const { object } = await generateObject({
             model: openai(model),
-            system: (params.system && params.system.trim()) || 'あなたは四択問題（複数正解可）を厳密なJSONで1問だけ生成します。各選択肢ごとに短い理由（正解/不正解のどちらでも）を explanations 配列で返してください（choices と同じ順序・同じ長さ）。',
-            prompt: `${baseContext}\nこの1問の正解数は「ちょうど ${targetKs[i]} 個」にしてください。出力は Question スキーマのJSONのみ（余計な文字列なし）。`,
+            system: (params.system && params.system.trim()) || `あなたは${choiceCount}択問題（複数正解可）を厳密なJSONで1問だけ生成します。各選択肢ごとに短い理由（正解/不正解のどちらでも）を explanations 配列で返してください（choices と同じ順序・同じ長さ）。`,
+            prompt: `${baseContext}\nこの1問の選択肢数は「${choiceCount}」にし、正解数は「ちょうど ${targetKs[i]} 個」にしてください。出力は Question スキーマのJSONのみ（余計な文字列なし）。`,
             schema: QuestionSchema,
         })
         const enforced = {
             ...object,
+            // clip choices/explanations to choiceCount if model over-produced
+            choices: Array.isArray((object as any).choices) ? (object as any).choices.slice(0, choiceCount) : [],
+            explanations: Array.isArray((object as any).explanations) ? (object as any).explanations.slice(0, choiceCount) : [],
             answerIndexes: adjustAnswersToK((object as any).answerIndexes as number[] | undefined, targetKs[i])
         }
         results[i] = normalizeQuestion(enforced as Question)

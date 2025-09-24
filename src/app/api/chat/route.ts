@@ -8,9 +8,9 @@ const BodySchema = z.object({
     messages: z.array(z.object({ role: z.enum(['user', 'assistant', 'system']), content: z.string() })).default([]),
     contextQuestions: z.array(z.object({
         question: z.string(),
-        choices: z.array(z.string()).length(4),
-        answerIndexes: z.array(z.number().int().min(0).max(3)).max(4).default([]),
-        explanations: z.array(z.string()).length(4)
+        choices: z.array(z.string()).min(2).max(8),
+        answerIndexes: z.array(z.number().int().min(0)).max(8).default([]),
+        explanations: z.array(z.string())
     })).optional(),
     contextOptions: z.object({
         includeQuestion: z.boolean().optional(),

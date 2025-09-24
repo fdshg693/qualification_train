@@ -37,7 +37,7 @@ export default async function AdminPromptsPage() {
                                 className="min-h-[200px] w-full rounded border p-2 font-mono text-sm"
                             />
                             <p className="text-xs text-slate-500">
-                                利用可能なプレースホルダー: {`{genre}`}, {`{subgenre}`}, {`{topic}`}, {`{count}`}, {`{minCorrect}`}, {`{maxCorrect}` }。これらは送信時に置換されます。
+                                利用可能なプレースホルダー: {`{genre}`}, {`{subgenre}`}, {`{topic}`}, {`{count}`}, {`{choiceCount}`}, {`{minCorrect}`}, {`{maxCorrect}` }。これらは送信時に置換されます。
                                 条件分岐などの複雑なロジックはサポートしません。
                             </p>
                         </div>
@@ -48,7 +48,7 @@ export default async function AdminPromptsPage() {
                                 defaultValue={defaultRow.system}
                                 className="min-h-[120px] w-full rounded border p-2 font-mono text-sm"
                             />
-                            <p className="text-xs text-slate-500">JSONスキーマに沿って1問ずつ出力する等の厳密な指示をここで管理します。</p>
+                            <p className="text-xs text-slate-500">JSONスキーマに沿って1問ずつ出力する等の厳密な指示をここで管理します。{`{choiceCount}`} などのプレースホルダーも使用できます。</p>
                         </div>
                         <div className="flex gap-2">
                             <Button type="submit">追加</Button>
@@ -87,7 +87,7 @@ export default async function AdminPromptsPage() {
                                         className="min-h-[200px] w-full rounded border p-2 font-mono text-sm"
                                     />
                                     <p className="text-xs text-slate-500">
-                                        利用可能なプレースホルダー: {`{genre}`}, {`{subgenre}`}, {`{topic}`}, {`{count}`}, {`{minCorrect}`}, {`{maxCorrect}` }。これらは送信時に置換されます。
+                                        利用可能なプレースホルダー: {`{genre}`}, {`{subgenre}`}, {`{topic}`}, {`{count}`}, {`{choiceCount}`}, {`{minCorrect}`}, {`{maxCorrect}` }。これらは送信時に置換されます。
                                     </p>
                                 </div>
                                 <div className="grid gap-2">
@@ -97,6 +97,7 @@ export default async function AdminPromptsPage() {
                                         defaultValue={row.system ?? defaultRow.system}
                                         className="min-h-[120px] w-full rounded border p-2 font-mono text-sm"
                                     />
+                                    <p className="text-xs text-slate-500">system にも {`{choiceCount}`} などのプレースホルダーを使用できます。</p>
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <Button type="submit" variant="secondary">更新</Button>

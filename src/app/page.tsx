@@ -25,6 +25,8 @@ export default function HomePage() {
     const [model, setModel] = useState<string>('gpt-4.1')
     // 並列度（2〜4）
     const [concurrency, setConcurrency] = useState<number>(2)
+    // 選択肢数（2〜8）
+    const [choiceCount, setChoiceCount] = useState<number>(4)
     // 正解数の最小/最大（1..4 の範囲で、各問の正解数はこの範囲からランダムに決定）
     const [minCorrect, setMinCorrect] = useState<number>(1)
     const [maxCorrect, setMaxCorrect] = useState<number>(1)
@@ -134,6 +136,7 @@ export default function HomePage() {
                     minCorrect,
                     maxCorrect,
                     concurrency,
+                    choiceCount,
                     promptName: promptName || undefined,
                 }),
             })
@@ -157,9 +160,9 @@ export default function HomePage() {
                     genre,
                     topic: topic || undefined,
                     question: q.question,
-                    choices: [q.choices[0], q.choices[1], q.choices[2], q.choices[3]],
+                    choices: q.choices,
                     answerIndexes: (q as any).answerIndexes ?? [],
-                    explanations: ((q as any).explanations ?? ['', '', '', '']) as [string, string, string, string],
+                    explanations: ((q as any).explanations ?? []),
                 })
                 toast(`問題${idx + 1}を保存しました`)
             } catch (e) {
@@ -179,9 +182,9 @@ export default function HomePage() {
                         genre,
                         topic: topic || undefined,
                         question: q.question,
-                        choices: [q.choices[0], q.choices[1], q.choices[2], q.choices[3]],
+                        choices: q.choices,
                         answerIndexes: (q as any).answerIndexes ?? [],
-                        explanations: ((q as any).explanations ?? ['', '', '', '']) as [string, string, string, string],
+                        explanations: ((q as any).explanations ?? []),
                     })
                 }
                 toast('全て保存しました')
@@ -213,8 +216,8 @@ export default function HomePage() {
 
     // プロンプトプレビュー（クライアント側で単純置換）
     useEffect(() => {
-        const DEFAULT_USER_TEMPLATE = `ジャンル: {genre}\nサブジャンル: {subgenre}\nトピック: {topic}\n問題数: {count}\n正解数の範囲: {minCorrect}〜{maxCorrect}\n並列度: {concurrency}`
-        const DEFAULT_SYSTEM = 'あなたは四択問題（複数正解可）を厳密なJSONで生成する出題エンジンです。各選択肢ごとに短い理由（正解/不正解いずれでも）を explanations 配列で返してください（choices と同じ順序・同じ長さ）。余計な文字列を含めないでください。'
+    const DEFAULT_USER_TEMPLATE = `ジャンル: {genre}\nサブジャンル: {subgenre}\nトピック: {topic}\n問題数: {count}\n選択肢数: {choiceCount}\n正解数の範囲: {minCorrect}〜{maxCorrect}\n並列度: {concurrency}`
+    const DEFAULT_SYSTEM = 'あなたは多肢選択式問題（複数正解可）を厳密なJSONで生成する出題エンジンです。各選択肢ごとに短い理由（正解/不正解いずれでも）を explanations 配列で返してください（choices と同じ順序・同じ長さ）。余計な文字列を含めないでください。'
         const selected = prompts.find(p => p.name === promptName)
         const tmpl = selected?.template ?? DEFAULT_USER_TEMPLATE
         const map: Record<string, string> = {
@@ -225,6 +228,7 @@ export default function HomePage() {
             '{minCorrect}': String(minCorrect ?? ''),
             '{maxCorrect}': String(maxCorrect ?? ''),
             '{concurrency}': String(concurrency ?? 2),
+            '{choiceCount}': String(choiceCount ?? 4),
         }
         let out = tmpl
         for (const k of Object.keys(map)) out = out.split(k).join(map[k])
@@ -292,6 +296,20 @@ export default function HomePage() {
                         <span className="text-xs text-slate-600">生成数</span>
                         <Input className="h-8 px-2 py-1 text-sm" type="number" min={1} max={50} value={count} onChange={(e) => setCount(Number(e.target.value) || 1)} />
                     </div>
+                    <div className="flex flex-col gap-1 w-32">
+                        <span className="text-xs text-slate-600">選択肢数</span>
+                        <Select className="h-8 px-2 py-1 text-sm" value={String(choiceCount)} onChange={(e) => {
+                            const v = Math.max(2, Math.min(8, Number(e.target.value) || 4))
+                            setChoiceCount(v)
+                            // 正解数の上限も追従
+                            setMinCorrect((m) => Math.min(m, v))
+                            setMaxCorrect((M) => Math.min(Math.max(M, 1), v))
+                        }}>
+                            {Array.from({ length: 7 }, (_, i) => i + 2).map((n) => (
+                                <option key={n} value={n}>{n}</option>
+                            ))}
+                        </Select>
+                    </div>
                     <div className="flex flex-col gap-1">
                         <span className="text-xs text-slate-600">正解数</span>
                         <div className="flex items-center gap-1">
@@ -299,10 +317,10 @@ export default function HomePage() {
                                 className="h-8 px-2 py-1 text-sm w-14"
                                 type="number"
                                 min={1}
-                                max={4}
+                                max={choiceCount}
                                 value={minCorrect}
                                 onChange={(e) => {
-                                    const v = Math.max(1, Math.min(4, Number(e.target.value) || 1))
+                                    const v = Math.max(1, Math.min(choiceCount, Number(e.target.value) || 1))
                                     setMinCorrect(v)
                                     if (v > maxCorrect) setMaxCorrect(v)
                                 }}
@@ -312,10 +330,10 @@ export default function HomePage() {
                                 className="h-8 px-2 py-1 text-sm w-14"
                                 type="number"
                                 min={1}
-                                max={4}
+                                max={choiceCount}
                                 value={maxCorrect}
                                 onChange={(e) => {
-                                    const v = Math.max(1, Math.min(4, Number(e.target.value) || 1))
+                                    const v = Math.max(1, Math.min(choiceCount, Number(e.target.value) || 1))
                                     setMaxCorrect(v)
                                     if (v < minCorrect) setMinCorrect(v)
                                 }}

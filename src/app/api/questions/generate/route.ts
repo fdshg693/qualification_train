@@ -10,9 +10,10 @@ const BodySchema = z.object({
     topic: z.string().optional(),
     count: z.number().int().min(1).max(50).optional(),
     model: z.string().optional(),
-    minCorrect: z.number().int().min(1).max(4).optional(),
-    maxCorrect: z.number().int().min(1).max(4).optional(),
+    minCorrect: z.number().int().min(1).max(8).optional(),
+    maxCorrect: z.number().int().min(1).max(8).optional(),
     concurrency: z.number().int().min(1).max(4).optional(),
+    choiceCount: z.number().int().min(2).max(8).optional(),
     promptName: z.string().optional(),
 })
 
@@ -26,6 +27,7 @@ export async function POST(req: Request) {
     let minCorrect: number | undefined
     let maxCorrect: number | undefined
     let concurrency: number | undefined
+    let choiceCount: number | undefined
     let promptName: string | undefined
     try {
         const json = await req.json()
@@ -39,13 +41,14 @@ export async function POST(req: Request) {
             minCorrect = parsed.data.minCorrect
             maxCorrect = parsed.data.maxCorrect
             concurrency = parsed.data.concurrency
+            choiceCount = parsed.data.choiceCount
             promptName = parsed.data.promptName
         }
     } catch { }
     // load prompt template (default)
     const row = await getPrompt(promptName || 'default')
     const template = row.template || ''
-    const system = (row as any).system || undefined
+    const systemRaw = (row as any).system || undefined
     function composePrompt(t: string) {
         const map: Record<string, string> = {
             '{genre}': genre ?? '',
@@ -55,12 +58,14 @@ export async function POST(req: Request) {
             '{minCorrect}': String(minCorrect ?? ''),
             '{maxCorrect}': String(maxCorrect ?? ''),
             '{concurrency}': String(concurrency ?? ''),
+            '{choiceCount}': String(choiceCount ?? 4),
         }
         let out = t
         for (const k of Object.keys(map)) out = out.split(k).join(map[k])
         return out
     }
     const composed = composePrompt(template)
-    const questions = await generateQuestions({ genre, subgenre, topic, count, model, minCorrect, maxCorrect, prompt: composed, system, concurrency })
+    const system = systemRaw ? composePrompt(systemRaw) : undefined
+    const questions = await generateQuestions({ genre, subgenre, topic, count, model, minCorrect, maxCorrect, prompt: composed, system, concurrency, choiceCount })
     return NextResponse.json({ questions })
 }

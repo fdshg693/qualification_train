@@ -14,16 +14,12 @@ export default async function SavedPage({ searchParams }: { searchParams?: Promi
     const sp = (await searchParams) ?? {}
     const data = await listQuestions({ genre: sp.genre, q: sp.q })
     const genreRows = await db.select().from(genres).orderBy(genres.createdAt)
-    const chatContext = data.map((row: any) => {
-        const choices = (row.choices as string[]) ?? []
-        const answers = (row.answers as number[]) ?? []
-        return ({
-            question: row.question,
-            choices: [choices[0], choices[1], choices[2], choices[3]] as [string, string, string, string],
-            answerIndexes: answers,
-            explanations: (row.explanation as string[]),
-        })
-    })
+    const chatContext = data.map((row: any) => ({
+        question: row.question,
+        choices: (row.choices as string[]) ?? [],
+        answerIndexes: (row.answers as number[]) ?? [],
+        explanations: (row.explanation as string[]),
+    }))
     return (
         <div className="space-y-4">
             <h1 className="text-2xl font-bold">保存済みの問題</h1>

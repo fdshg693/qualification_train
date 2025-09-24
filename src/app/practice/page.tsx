@@ -58,9 +58,9 @@ export default async function PracticePage() {
                         <Chat
                             questions={[{
                                 question: q.question,
-                                choices: q.choices,
+                                    choices: q.choices,
                                 answerIndexes: q.answerIndexes ?? [],
-                                explanations: (q.explanations as string[]),
+                                    explanations: (q.explanations as string[]),
                             }]}
                             title="AIチャット"
                             fullHeight
