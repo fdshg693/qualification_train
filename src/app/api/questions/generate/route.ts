@@ -11,6 +11,7 @@ const BodySchema = z.object({
     genre: z.string().optional(),
     subgenre: z.string().optional(),
     topic: z.string().optional(),
+    selectedKeywords: z.array(z.string()).optional(),
     count: z.number().int().min(1).max(50).optional(),
     model: z.string().optional(),
     minCorrect: z.number().int().min(1).max(8).optional(),
@@ -25,6 +26,7 @@ export async function POST(req: Request) {
     let genre: string | undefined
     let subgenre: string | undefined
     let topic: string | undefined
+    let selectedKeywords: string[] | undefined
     let count = 1
     let model: string | undefined
     let minCorrect: number | undefined
@@ -39,6 +41,7 @@ export async function POST(req: Request) {
             genre = parsed.data.genre
             subgenre = parsed.data.subgenre
             topic = parsed.data.topic
+            selectedKeywords = parsed.data.selectedKeywords
             count = parsed.data.count ?? 1
             model = parsed.data.model
             minCorrect = parsed.data.minCorrect
@@ -57,6 +60,7 @@ export async function POST(req: Request) {
             '{genre}': genre ?? '',
             '{subgenre}': subgenre ?? '',
             '{topic}': topic ?? '',
+            '{keywords}': (selectedKeywords && selectedKeywords.length ? selectedKeywords.join(', ') : ''),
             '{count}': String(count ?? 1),
             '{minCorrect}': String(minCorrect ?? ''),
             '{maxCorrect}': String(maxCorrect ?? ''),
@@ -87,7 +91,11 @@ export async function POST(req: Request) {
             console.warn('failed to load excluded keywords', e)
         }
     }
-    const composed = [composePrompt(template), exclusionNote].filter(Boolean).join('\n\n')
+    // 選択キーワードの包含指示
+    const includeNote = (selectedKeywords && selectedKeywords.length)
+        ? `次のキーワードの概念を必ず一つ以上、問題文または選択肢/解説の中で扱ってください（必要に応じて組み合わせ可）: ${selectedKeywords.join(', ')}`
+        : ''
+    const composed = [composePrompt(template), includeNote, exclusionNote].filter(Boolean).join('\n\n')
     const system = systemRaw ? composePrompt(systemRaw) : undefined
     const questions = await generateQuestions({ genre, subgenre, topic, count, model, minCorrect, maxCorrect, prompt: composed, system, concurrency, choiceCount })
     return NextResponse.json({ questions })

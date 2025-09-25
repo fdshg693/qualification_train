@@ -20,6 +20,9 @@ export default function HomePage() {
     // サブジャンル (空文字は「未選択」= ジャンルベースで出題)
     const [subgenre, setSubgenre] = useState<string>('')
     const [topic, setTopic] = useState<string>('')
+    // ジャンルに紐づくキーワード（除外フラグfalseのみを選択候補として扱う）
+    const [genreKeywords, setGenreKeywords] = useState<string[]>([])
+    const [selectedKeywords, setSelectedKeywords] = useState<string[]>([])
     const [loading, setLoading] = useState(false)
     const [count, setCount] = useState<number>(1)
     const [model, setModel] = useState<string>('gpt-4.1')
@@ -65,16 +68,25 @@ export default function HomePage() {
                         if (canceled) return
                         setSubgenres(subs)
                         setSubgenre('') // 空 = 全体(ジャンル)から出題
-                        // 除外キーワードも初期取得
+                        // ジャンルキーワード（除外/非除外）も初期取得
                         try {
                             const r = await fetch(`/api/keywords?genreId=${g.id}`, { cache: 'no-store' })
                             const rows = (await r.json()) as Array<{ id: number; genreId: number; name: string; excluded?: boolean }>
-                            if (!canceled) setExcludedKeywords((rows || []).filter(k => (k as any).excluded === true).map(k => k.name))
+                            if (!canceled) {
+                                const ex = (rows || []).filter(k => (k as any).excluded === true).map(k => k.name)
+                                const avail = (rows || []).filter(k => (k as any).excluded !== true).map(k => k.name)
+                                setExcludedKeywords(ex)
+                                setGenreKeywords(avail)
+                                // ジャンルが変わったら選択リセット
+                                setSelectedKeywords([])
+                            }
                         } catch { setExcludedKeywords([]) }
                     } else {
                         setSubgenres([])
                         setSubgenre('')
                         setExcludedKeywords([])
+                        setGenreKeywords([])
+                        setSelectedKeywords([])
                     }
                 } catch (e) {
                     console.error(e)
@@ -124,7 +136,14 @@ export default function HomePage() {
                     try {
                         const r = await fetch(`/api/keywords?genreId=${g.id}`, { cache: 'no-store' })
                         const rows = (await r.json()) as Array<{ id: number; genreId: number; name: string; excluded?: boolean }>
-                        if (!canceled) setExcludedKeywords((rows || []).filter(k => (k as any).excluded === true).map(k => k.name))
+                        if (!canceled) {
+                            const ex = (rows || []).filter(k => (k as any).excluded === true).map(k => k.name)
+                            const avail = (rows || []).filter(k => (k as any).excluded !== true).map(k => k.name)
+                            setExcludedKeywords(ex)
+                            setGenreKeywords(avail)
+                            // ジャンル変更時、選択リセット（サブジャンルは影響しないがジャンル依存のため）
+                            setSelectedKeywords([])
+                        }
                     } catch { setExcludedKeywords([]) }
                 } catch (e) {
                     console.error(e)
@@ -147,6 +166,7 @@ export default function HomePage() {
                     genre: genre || undefined,
                     subgenre: subgenre || undefined,
                     topic,
+                    selectedKeywords: (selectedKeywords && selectedKeywords.length ? selectedKeywords : undefined),
                     count,
                     model,
                     minCorrect,
@@ -232,7 +252,7 @@ export default function HomePage() {
 
     // プロンプトプレビュー（クライアント側で単純置換）
     useEffect(() => {
-    const DEFAULT_USER_TEMPLATE = `ジャンル: {genre}\nサブジャンル: {subgenre}\nトピック: {topic}\n問題数: {count}\n選択肢数: {choiceCount}\n正解数の範囲: {minCorrect}〜{maxCorrect}\n並列度: {concurrency}`
+    const DEFAULT_USER_TEMPLATE = `ジャンル: {genre}\nサブジャンル: {subgenre}\nトピック: {topic}\nキーワード: {keywords}\n問題数: {count}\n選択肢数: {choiceCount}\n正解数の範囲: {minCorrect}〜{maxCorrect}\n並列度: {concurrency}`
     const DEFAULT_SYSTEM = 'あなたは多肢選択式問題（複数正解可）を厳密なJSONで生成する出題エンジンです。各選択肢ごとに短い理由（正解/不正解いずれでも）を explanations 配列で返してください（choices と同じ順序・同じ長さ）。余計な文字列を含めないでください。'
         const selected = prompts.find(p => p.name === promptName)
         const tmpl = selected?.template ?? DEFAULT_USER_TEMPLATE
@@ -240,6 +260,7 @@ export default function HomePage() {
             '{genre}': genre ?? '',
             '{subgenre}': subgenre ?? '',
             '{topic}': topic ?? '',
+            '{keywords}': (selectedKeywords && selectedKeywords.length ? selectedKeywords.join(', ') : ''),
             '{count}': String(count ?? 1),
             '{minCorrect}': String(minCorrect ?? ''),
             '{maxCorrect}': String(maxCorrect ?? ''),
@@ -252,10 +273,14 @@ export default function HomePage() {
         const exclusionNote = excludedKeywords.length
             ? `次のキーワードやそれに密接に関連する分野・話題は出題から除外してください（重複や言い換えも不可）: ${excludedKeywords.join(', ')}`
             : ''
-        if (exclusionNote) out = [out, exclusionNote].join('\n\n')
+        // 選択したキーワードを含める指示
+        const includeNote = selectedKeywords.length
+            ? `次のキーワードや概念を必ず問題文または選択肢/解説の中で扱ってください（必要に応じて組み合わせ可）: ${selectedKeywords.join(', ')}`
+            : ''
+        if (exclusionNote || includeNote) out = [out, includeNote, exclusionNote].filter(Boolean).join('\n\n')
         setPromptPreview(out)
         setSystemPreview((selected?.system ?? DEFAULT_SYSTEM) || DEFAULT_SYSTEM)
-    }, [prompts, promptName, genre, subgenre, topic, count, minCorrect, maxCorrect, concurrency, choiceCount, excludedKeywords])
+    }, [prompts, promptName, genre, subgenre, topic, count, minCorrect, maxCorrect, concurrency, choiceCount, excludedKeywords, selectedKeywords])
 
     // 仕切りバーのドラッグ開始
     function handleSeparatorMouseDown(e: ReactMouseEvent<HTMLDivElement>) {
@@ -312,6 +337,75 @@ export default function HomePage() {
                     <div className="flex flex-col gap-1">
                         <span className="text-xs text-slate-600">トピック</span>
                         <Input className="h-8 px-2 py-1 text-sm min-w-[14rem]" placeholder="例: OSI参照モデル" value={topic} onChange={(e) => setTopic(e.target.value)} />
+                    </div>
+                    {/* 関連キーワード（複数選択） */}
+                    <div className="flex flex-col gap-1 min-w-[16rem]">
+                        <span className="text-xs text-slate-600">関連キーワード（{selectedKeywords.length}/{genreKeywords.length}）</span>
+                        <div className="border rounded p-2 bg-white w-full max-w-[28rem]">
+                            {/* 選択済みチップ */}
+                            <div className="flex flex-wrap gap-1 mb-2 min-h-[1.25rem]">
+                                {selectedKeywords.map((k) => (
+                                    <button
+                                        key={k}
+                                        className="text-[11px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 hover:bg-blue-100"
+                                        onClick={(e) => {
+                                            e.preventDefault()
+                                            setSelectedKeywords((prev) => prev.filter((x) => x !== k))
+                                        }}
+                                        title="クリックで外す"
+                                    >{k} ✕</button>
+                                ))}
+                                {!selectedKeywords.length && (
+                                    <span className="text-[11px] text-slate-400">未選択</span>
+                                )}
+                            </div>
+                            {/* 候補一覧（topic で簡易フィルタ） */}
+                            <div className="max-h-28 overflow-auto custom-scroll border-t pt-2">
+                                {(() => {
+                                    const tokens = (topic || '').split(/\s+/).filter(Boolean)
+                                    const list = genreKeywords.filter((k) => {
+                                        if (!tokens.length) return true
+                                        const lower = k.toLowerCase()
+                                        return tokens.some((t) => lower.includes(t.toLowerCase()))
+                                    })
+                                    const visible = list.slice(0, 50) // 上限
+                                    return visible.length ? (
+                                        <div className="grid grid-cols-2 gap-1">
+                                            {visible.map((k) => {
+                                                const checked = selectedKeywords.includes(k)
+                                                return (
+                                                    <label key={k} className="flex items-center gap-1 text-xs cursor-pointer select-none">
+                                                        <input
+                                                            type="checkbox"
+                                                            className="scale-90"
+                                                            checked={checked}
+                                                            onChange={(e) => {
+                                                                const on = e.target.checked
+                                                                setSelectedKeywords((prev) => {
+                                                                    const set = new Set(prev)
+                                                                    if (on) set.add(k)
+                                                                    else set.delete(k)
+                                                                    return Array.from(set)
+                                                                })
+                                                            }}
+                                                        />
+                                                        <span className="truncate" title={k}>{k}</span>
+                                                    </label>
+                                                )
+                                            })}
+                                        </div>
+                                    ) : (
+                                        <div className="text-[11px] text-slate-400">候補がありません</div>
+                                    )
+                                })()}
+                            </div>
+                            <div className="mt-2 flex gap-2 justify-end">
+                                <Button type="button" variant="outline" className="h-7 px-2 text-xs"
+                                    onClick={() => setSelectedKeywords([])}
+                                    disabled={!selectedKeywords.length}
+                                >クリア</Button>
+                            </div>
+                        </div>
                     </div>
                     <div className="flex flex-col gap-1 w-28">
                         <span className="text-xs text-slate-600">生成数</span>

@@ -6,6 +6,7 @@ export const DEFAULT_PROMPT_TEMPLATE = `あなたはプロの出題者です。�
 ジャンル: {genre}
 サブジャンル: {subgenre}
 トピック: {topic}
+キーワード: {keywords}
 問題数: {count}
 選択肢数（各問）: {choiceCount}
 正解数（各問）: {minCorrect}〜{maxCorrect}
