@@ -1,1 +1,0 @@
-ALTER TABLE "prompts" ADD COLUMN "system" text;

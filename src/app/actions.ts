@@ -211,20 +211,30 @@ export async function deletePrompt(id: number) {
 }
 
 // ===== Keywords (キーワード) =====
-export async function listKeywords(opts?: { genreId?: number }) {
+export async function listKeywords(opts?: { genreId?: number; parentId?: number | null }) {
     const genreId = opts?.genreId
+    const parentId = opts?.parentId
+    const where = [
+        genreId ? eq(keywords.genreId, genreId) : undefined,
+        parentId === null ? sql`"parent_id" IS NULL` : (Number.isFinite(parentId as any) ? eq(keywords.parentId, parentId as number) : undefined),
+    ].filter(Boolean) as any
     const rows = await db
         .select()
         .from(keywords)
-        .where(genreId ? eq(keywords.genreId, genreId) : undefined as any)
+        .where(where.length ? (and as any)(...where) : undefined)
         .orderBy(keywords.createdAt)
     return rows
 }
 
-export async function createKeyword(genreId: number, name: string) {
+export async function createKeyword(genreId: number, name: string, parentId?: number | null) {
     if (!genreId || !name?.trim()) return
+    let pid: number | null = parentId ?? null
+    if (pid) {
+        const parent = await getKeyword(pid)
+        if (!parent || parent.genreId !== genreId) pid = null
+    }
     try {
-        await db.insert(keywords).values({ genreId, name: name.trim() })
+        await db.insert(keywords).values({ genreId, name: name.trim(), parentId: pid })
     } catch { /* ignore duplicates by unique index */ }
     revalidatePath('/admin/keywords')
 }
@@ -248,12 +258,30 @@ export async function toggleKeywordExcluded(id: number) {
     revalidatePath('/admin/keywords')
 }
 
-// AI によるキーワード自動生成（ジャンルをなるべく網羅）
+// キーワード1件取得
+
+export async function getKeyword(id: number) {
+    if (!id) return null
+    const rows = await db.select().from(keywords).where(eq(keywords.id, id))
+    return rows[0] ?? null
+}
+
+// AI によるキーワード自動生成（親子対応）
 const KeywordsSchema = z.object({ keywords: z.array(z.string()).min(1).max(200) })
 
-export async function generateKeywords(params: { genreId: number; limit: number }) {
-    const { genreId } = params
+export async function generateKeywords(params: { genreId?: number; parentId?: number | null; limit: number }) {
+    const { genreId: rawGenreId, parentId } = params
     const limit = Math.max(1, Math.min(200, Math.floor(params.limit || 20)))
+    let genreId = rawGenreId || 0
+    let contextName = ''
+    let mode: 'genre' | 'child' = 'genre'
+    if (parentId && parentId > 0) {
+        const parent = await getKeyword(parentId)
+        if (!parent) return [] as string[]
+        genreId = parent.genreId
+        contextName = parent.name
+        mode = 'child'
+    }
     if (!genreId) return [] as string[]
     const gs = await db.select().from(genres).where(eq(genres.id, genreId))
     if (!gs.length) return []
@@ -262,16 +290,19 @@ export async function generateKeywords(params: { genreId: number; limit: number 
     let list: string[] = []
     if (!apiKey) {
         // Mock: deterministic placeholders
-        list = Array.from({ length: limit }, (_, i) => `${genreName}キーワード${i + 1}`)
+        list = Array.from({ length: limit }, (_, i) => mode === 'child' ? `${contextName}の子${i + 1}` : `${genreName}キーワード${i + 1}`)
     } else {
         const openai = createOpenAI({ apiKey })
         const { object } = await generateObject({
             model: openai('gpt-4.1'),
-            system: 'あなたはジャンル内の網羅的な重要キーワードを抽出するアシスタントです。重複や言い換えは避け、短い名詞句で出力してください。出力はJSONのみ。',
+            system: 'あなたは階層的なキーワード体系を構築するアシスタントです。重複や言い換えは避け、短い名詞句で出力してください。出力はJSONのみ。',
             prompt: [
                 `ジャンル: ${genreName}`,
+                mode === 'child' ? `親キーワード: ${contextName}` : 'トップレベルを網羅',
                 `上限数: ${limit}`,
-                'ジャンル全体をなるべくカバーするように多様なトピックからキーワードを列挙してください。',
+                mode === 'child'
+                    ? '指定した親キーワードの直下の子キーワード候補を列挙してください。粒度は親の下位概念となるように。'
+                    : 'ジャンル全体をなるべくカバーするように多様なトピックからトップレベルのキーワードを列挙してください。',
                 '各要素は1～5語程度の短い名詞句とし、JSONのみで返してください。キーは "keywords"、値は配列です。'
             ].join('\n'),
             schema: KeywordsSchema,
@@ -279,13 +310,16 @@ export async function generateKeywords(params: { genreId: number; limit: number 
         list = (object.keywords || []).slice(0, limit)
     }
     // 既存を取得して差分のみ追加
-    const existing = await db.select().from(keywords).where(eq(keywords.genreId, genreId))
+    const existing = await db
+        .select()
+        .from(keywords)
+        .where(and(eq(keywords.genreId, genreId), parentId ? eq(keywords.parentId, parentId) : sql`"parent_id" IS NULL`))
     const exSet = new Set(existing.map((k) => k.name))
     const unique = list.map((s) => s.trim()).filter((s) => s && !exSet.has(s))
     if (unique.length) {
         // bulk insert; ignore duplicates
         for (const name of unique) {
-            try { await db.insert(keywords).values({ genreId, name }) } catch {}
+            try { await db.insert(keywords).values({ genreId, name, parentId: parentId ?? null }) } catch {}
         }
         revalidatePath('/admin/keywords')
     }

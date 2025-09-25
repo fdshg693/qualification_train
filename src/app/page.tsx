@@ -467,6 +467,7 @@ export default function HomePage() {
                     <div className="flex flex-col gap-1">
                         <span className="text-xs text-slate-600">並列度</span>
                         <Select className="h-8 px-2 py-1 text-sm w-16" value={String(concurrency)} onChange={(e) => setConcurrency(Math.max(2, Math.min(4, Number(e.target.value) || 2)))}>
+                            <option value="2">1</option>
                             <option value="2">2</option>
                             <option value="3">3</option>
                             <option value="4">4</option>

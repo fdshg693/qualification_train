@@ -1,15 +1,18 @@
-import { listGenres, listKeywords, createKeyword, updateKeyword, deleteKeyword, generateKeywords, toggleKeywordExcluded } from '@/app/actions'
+import { listGenres, listKeywords, createKeyword, updateKeyword, deleteKeyword, generateKeywords, toggleKeywordExcluded, getKeyword } from '@/app/actions'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 
-export default async function AdminKeywordsPage({ searchParams }: { searchParams?: Promise<{ genreId?: string }> }) {
+export default async function AdminKeywordsPage({ searchParams }: { searchParams?: Promise<{ genreId?: string; parentId?: string | null }> }) {
     const genres = await listGenres()
     const sp = (await searchParams) || {}
     const fallbackId = genres[0]?.id as number | undefined
     const currentId = Number(sp?.genreId || fallbackId || 0) || fallbackId
-    const initialKeywords = currentId ? await listKeywords({ genreId: currentId }) : []
+    const rawParentId = sp?.parentId
+    const parentId = rawParentId === 'null' ? null : (rawParentId ? Number(rawParentId) : null)
+    const parent = parentId ? await getKeyword(parentId) : null
+    const initialKeywords = currentId ? await listKeywords({ genreId: currentId!, parentId }) : []
     return (
         <div className="space-y-4">
             <h1 className="text-2xl font-bold">キーワード管理</h1>
@@ -24,8 +27,10 @@ export default async function AdminKeywordsPage({ searchParams }: { searchParams
                         action={async (formData: FormData) => {
                             'use server'
                             const gid = Number(formData.get('genreId'))
-                            const limit = Number(formData.get('limit') || 50)
-                            await generateKeywords({ genreId: gid, limit })
+                            const limit = Number(formData.get('limit') || 5)
+                            const pidValue = formData.get('parentId')
+                            const pid = pidValue === 'null' ? null : (pidValue ? Number(pidValue) : null)
+                            await generateKeywords({ genreId: gid, parentId: pid, limit })
                         }}
                     >
                         <div className="flex flex-col gap-1">
@@ -37,9 +42,18 @@ export default async function AdminKeywordsPage({ searchParams }: { searchParams
                                 ))}
                             </Select>
                         </div>
+                        <div className="flex flex-col gap-1">
+                            <span className="text-xs text-slate-600">親キーワード（省略時はトップレベル）</span>
+                            <Select name="parentId" defaultValue={parentId === null ? 'null' : (parentId ? String(parentId) : 'null')} className="min-w-[12rem]">
+                                <option value="null">(トップレベル)</option>
+                                {parent && (
+                                    <option value={parent.id}>{parent.name}</option>
+                                )}
+                            </Select>
+                        </div>
                         <div className="flex flex-col gap-1 w-28">
                             <span className="text-xs text-slate-600">上限数</span>
-                            <Input name="limit" type="number" min={1} max={200} defaultValue={50} />
+                            <Input name="limit" type="number" min={1} max={20} defaultValue={5} />
                         </div>
                         <Button type="submit">AIで生成</Button>
                     </form>
@@ -61,6 +75,7 @@ export default async function AdminKeywordsPage({ searchParams }: { searchParams
                                 ))}
                             </Select>
                         </div>
+                        <input type="hidden" name="parentId" value={parentId === null ? 'null' : ''} />
                         <Button type="submit" variant="outline">切り替え</Button>
                     </form>
                     <form
@@ -69,7 +84,9 @@ export default async function AdminKeywordsPage({ searchParams }: { searchParams
                             'use server'
                             const gid = Number(formData.get('genreId'))
                             const name = String(formData.get('name') || '')
-                            await createKeyword(gid, name)
+                            const pidValue = formData.get('parentId')
+                            const pid = pidValue === 'null' ? null : (pidValue ? Number(pidValue) : null)
+                            await createKeyword(gid, name, pid ?? undefined)
                         }}
                     >
                         <Select name="genreId" defaultValue={currentId ? String(currentId) : ''} className="min-w-[12rem]">
@@ -78,11 +95,20 @@ export default async function AdminKeywordsPage({ searchParams }: { searchParams
                                 <option key={g.id} value={g.id}>{g.name}</option>
                             ))}
                         </Select>
+                        <Select name="parentId" defaultValue={parentId === null ? 'null' : (parentId ? String(parentId) : 'null')} className="min-w-[12rem]">
+                            <option value="null">(トップレベル)</option>
+                            {parent && (
+                                <option value={parent.id}>{parent.name}</option>
+                            )}
+                        </Select>
                         <Input name="name" placeholder="キーワード名" className="flex-1" />
                         <Button type="submit" variant="secondary">追加</Button>
                     </form>
 
                     <div className="grid gap-2">
+                        {parent && (
+                            <div className="text-sm text-slate-600">親: {parent.name}</div>
+                        )}
                         {initialKeywords.map((k) => (
                             <div key={k.id} className="flex items-center gap-2">
                                 <form
@@ -100,6 +126,11 @@ export default async function AdminKeywordsPage({ searchParams }: { searchParams
                                         {k.excluded ? '除外中' : '対象'}
                                     </span>
                                     <Button type="submit" size="sm" variant="secondary">更新</Button>
+                                </form>
+                                <form method="GET">
+                                    <input type="hidden" name="genreId" value={currentId ? String(currentId) : ''} />
+                                    <input type="hidden" name="parentId" value={String(k.id)} />
+                                    <Button type="submit" size="sm" variant="outline">子を見る</Button>
                                 </form>
                                 <form
                                     action={async (formData: FormData) => {
@@ -129,6 +160,13 @@ export default async function AdminKeywordsPage({ searchParams }: { searchParams
                             <div className="text-xs text-slate-500">まだキーワードがありません</div>
                         )}
                     </div>
+                    {parent && (
+                        <form method="GET" className="mt-3">
+                            <input type="hidden" name="genreId" value={currentId ? String(currentId) : ''} />
+                            <input type="hidden" name="parentId" value={'null'} />
+                            <Button type="submit" variant="outline">トップへ戻る</Button>
+                        </form>
+                    )}
                 </CardContent>
             </Card>
         </div>

@@ -58,13 +58,18 @@ export const keywords = pgTable(
     {
         id: serial('id').primaryKey(),
         genreId: integer('genre_id').notNull().references(() => genres.id, { onDelete: 'cascade' }),
+        // 親キーワード（ツリー構造）。トップレベルは NULL。
+    parentId: integer('parent_id').references(((): any => keywords.id), { onDelete: 'cascade' }),
         name: text('name').notNull(),
         // 除外フラグ（除外中のキーワードは問題生成時に回避する）
         excluded: pgBoolean('excluded').notNull().default(false),
         createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
     },
     (t) => ({
-        keywordsGenreIdNameUnique: uniqueIndex('keywords_genre_id_name_unique').on(t.genreId, t.name),
+        // 同一親配下（親NULL含む）での重複名を抑止する目的の一意制約
+        // 注意: parent_id に NULL が含まれる行同士は Postgres では重複と見なされないため、
+        // トップレベルで完全な一意性を強制したい場合はアプリ側でのチェックも併用します。
+        keywordsGenreParentNameUnique: uniqueIndex('keywords_genre_parent_name_unique').on(t.genreId, t.parentId, t.name),
     })
 )
 
