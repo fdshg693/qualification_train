@@ -4,8 +4,6 @@
 export const DEFAULT_PROMPT_TEMPLATE = `あなたはプロの出題者です。以下の条件を満たす多肢選択式の問題を作成してください。
 
 ジャンル: {genre}
-サブジャンル: {subgenre}
-トピック: {topic}
 キーワード: {keywords}
 問題数: {count}
 選択肢数（各問）: {choiceCount}

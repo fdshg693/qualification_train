@@ -49,7 +49,7 @@ export default async function PracticePage() {
                                         answerIndexes: q.answerIndexes ?? [],
                                         explanations: (q.explanations as string[]),
                                     }}
-                                    meta={{ genre: q.genre, topic: q.topic ?? undefined }}
+                                    meta={{ genre: q.genre }}
                                 />
                             </CardContent>
                         </Card>

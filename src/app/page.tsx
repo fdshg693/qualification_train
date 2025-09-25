@@ -11,14 +11,12 @@ import { Toaster, useToast } from '@/components/ui/toaster'
 import { saveQuestion } from './actions'
 import { Chat } from '@/components/chat'
 type Genre = { id: number; name: string }
-type Subgenre = { id: number; genreId: number; name: string }
+// サブジャンル機能は廃止
 
 export default function HomePage() {
     const [genre, setGenre] = useState<string>('')
     const [genres, setGenres] = useState<Genre[]>([])
-    const [subgenres, setSubgenres] = useState<Subgenre[]>([])
-    // サブジャンル (空文字は「未選択」= ジャンルベースで出題)
-    const [subgenre, setSubgenre] = useState<string>('')
+    // サブジャンル削除に伴い状態も削除
     const [topic, setTopic] = useState<string>('')
     // ジャンルに紐づくキーワード（除外フラグfalseのみ）。表示は階層ブラウザで段階的に取得する。
     const [genreKeywords, setGenreKeywords] = useState<string[]>([])
@@ -64,14 +62,9 @@ export default function HomePage() {
                     setGenres(data)
                     const nextGenre = genre || (data[0]?.name ?? '')
                     if (nextGenre) setGenre(nextGenre)
-                    // 初期ロード時はサブジャンルは空で開始し、ユーザーが明示的に選択できるようにする
                     const g = data.find((x) => x.name === nextGenre)
                     if (g) {
-                        const res2 = await fetch(`/api/subgenres?genreId=${g.id}`, { cache: 'no-store' })
-                        const subs = (await res2.json()) as Subgenre[]
                         if (canceled) return
-                        setSubgenres(subs)
-                        setSubgenre('') // 空 = 全体(ジャンル)から出題
                         // ジャンルキーワード（除外/非除外）も初期取得
                         try {
                             // トップレベルのみ取得
@@ -87,8 +80,6 @@ export default function HomePage() {
                             }
                         } catch { setExcludedKeywords([]) }
                     } else {
-                        setSubgenres([])
-                        setSubgenre('')
                         setExcludedKeywords([])
                         setGenreKeywords([])
                         setSelectedKeywords([])
@@ -118,25 +109,17 @@ export default function HomePage() {
         return () => { canceled = true }
     }, [])
 
-    // Fetch subgenres when genre changes
+    // ジャンル変更時のキーワード初期化
     useEffect(() => {
         let canceled = false
             ; (async () => {
                 try {
                     if (!genre) {
-                        setSubgenres([])
-                        setSubgenre('')
                         setExcludedKeywords([])
                         return
                     }
                     const g = genres.find((x) => x.name === genre)
                     if (!g) return
-                    const res = await fetch(`/api/subgenres?genreId=${g.id}`, { cache: 'no-store' })
-                    const subs = (await res.json()) as Subgenre[]
-                    if (canceled) return
-                    setSubgenres(subs)
-                    // 既に選択していたものが存在するなら保持。無ければ空(未選択)を維持。
-                    setSubgenre((prev) => (prev && subs.some((s) => s.name === prev) ? prev : ''))
                     // 除外キーワードも取得
                     try {
                         const r = await fetch(`/api/keywords?genreId=${g.id}&parentId=null`, { cache: 'no-store' })
@@ -165,11 +148,10 @@ export default function HomePage() {
             const res = await fetch('/api/questions/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                // プロンプトテンプレートで単純置換するため、そのままの値を送る
+                // topic は検索ボックスのみ（生成には送らない）
                 body: JSON.stringify({
                     genre: genre || undefined,
-                    subgenre: subgenre || undefined,
-                    topic,
+                    // subgenre/topic は送信しない
                     selectedKeywords: (selectedKeywords && selectedKeywords.length ? selectedKeywords : undefined),
                     count,
                     model,
@@ -198,7 +180,6 @@ export default function HomePage() {
             try {
                 await saveQuestion({
                     genre,
-                    topic: topic || undefined,
                     question: q.question,
                     choices: q.choices,
                     answerIndexes: (q as any).answerIndexes ?? [],
@@ -220,7 +201,6 @@ export default function HomePage() {
                     const q = results[i]
                     await saveQuestion({
                         genre,
-                        topic: topic || undefined,
                         question: q.question,
                         choices: q.choices,
                         answerIndexes: (q as any).answerIndexes ?? [],
@@ -256,14 +236,13 @@ export default function HomePage() {
 
     // プロンプトプレビュー（クライアント側で単純置換）
     useEffect(() => {
-    const DEFAULT_USER_TEMPLATE = `ジャンル: {genre}\nサブジャンル: {subgenre}\nトピック: {topic}\nキーワード: {keywords}\n問題数: {count}\n選択肢数: {choiceCount}\n正解数の範囲: {minCorrect}〜{maxCorrect}\n並列度: {concurrency}`
+    const DEFAULT_USER_TEMPLATE = `ジャンル: {genre}\nキーワード: {keywords}\n問題数: {count}\n選択肢数: {choiceCount}\n正解数の範囲: {minCorrect}〜{maxCorrect}\n並列度: {concurrency}`
     const DEFAULT_SYSTEM = 'あなたは多肢選択式問題（複数正解可）を厳密なJSONで生成する出題エンジンです。各選択肢ごとに短い理由（正解/不正解いずれでも）を explanations 配列で返してください（choices と同じ順序・同じ長さ）。余計な文字列を含めないでください。'
         const selected = prompts.find(p => p.name === promptName)
         const tmpl = selected?.template ?? DEFAULT_USER_TEMPLATE
         const map: Record<string, string> = {
             '{genre}': genre ?? '',
-            '{subgenre}': subgenre ?? '',
-            '{topic}': topic ?? '',
+            // subgenre/topic プレースホルダーは廃止
             '{keywords}': (selectedKeywords && selectedKeywords.length ? selectedKeywords.join(', ') : ''),
             '{count}': String(count ?? 1),
             '{minCorrect}': String(minCorrect ?? ''),
@@ -284,7 +263,7 @@ export default function HomePage() {
         if (exclusionNote || includeNote) out = [out, includeNote, exclusionNote].filter(Boolean).join('\n\n')
         setPromptPreview(out)
         setSystemPreview((selected?.system ?? DEFAULT_SYSTEM) || DEFAULT_SYSTEM)
-    }, [prompts, promptName, genre, subgenre, topic, count, minCorrect, maxCorrect, concurrency, choiceCount, excludedKeywords, selectedKeywords])
+    }, [prompts, promptName, genre, topic, count, minCorrect, maxCorrect, concurrency, choiceCount, excludedKeywords, selectedKeywords])
 
     // 仕切りバーのドラッグ開始
     function handleSeparatorMouseDown(e: ReactMouseEvent<HTMLDivElement>) {
@@ -319,16 +298,7 @@ export default function HomePage() {
                             ))}
                         </Select>
                     </div>
-                    <div className="flex flex-col gap-1">
-                        <span className="text-xs text-slate-600">サブジャンル</span>
-                        <Select className="h-8 px-2 py-1 text-sm min-w-[12rem]" value={subgenre} onChange={(e) => setSubgenre(e.target.value)}>
-                            <option value="">(未選択 / 全体)</option>
-                            {!subgenres.length && <option value="" disabled>サブジャンル未登録</option>}
-                            {subgenres.map((s) => (
-                                <option key={s.id} value={s.name}>{s.name}</option>
-                            ))}
-                        </Select>
-                    </div>
+                    {/* サブジャンル選択は廃止 */}
                     <div className="flex flex-col gap-1">
                         <span className="text-xs text-slate-600">テンプレ</span>
                         <Select className="h-8 px-2 py-1 text-sm min-w-[10rem]" value={promptName} onChange={(e) => setPromptName(e.target.value)}>
@@ -339,7 +309,7 @@ export default function HomePage() {
                         </Select>
                     </div>
                     <div className="flex flex-col gap-1">
-                        <span className="text-xs text-slate-600">トピック</span>
+                        <span className="text-xs text-slate-600">検索</span>
                         <Input className="h-8 px-2 py-1 text-sm min-w-[14rem]" placeholder="例: OSI参照モデル" value={topic} onChange={(e) => setTopic(e.target.value)} />
                     </div>
                     {/* 関連キーワード（階層ブラウザ + 複数選択） */}

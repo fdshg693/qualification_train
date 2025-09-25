@@ -9,26 +9,9 @@ export const genres = pgTable('genres', {
 export type InsertGenre = typeof genres.$inferInsert
 export type SelectGenre = typeof genres.$inferSelect
 
-export const subgenres = pgTable(
-    'subgenres',
-    {
-        id: serial('id').primaryKey(),
-        genreId: integer('genre_id').notNull().references(() => genres.id, { onDelete: 'cascade' }),
-        name: text('name').notNull(),
-        createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
-    },
-    (t) => ({
-        subgenresGenreIdNameUnique: uniqueIndex('subgenres_genre_id_name_unique').on(t.genreId, t.name),
-    })
-)
-
-export type InsertSubgenre = typeof subgenres.$inferInsert
-export type SelectSubgenre = typeof subgenres.$inferSelect
-
 export const questions = pgTable('questions', {
     id: serial('id').primaryKey(),
     genre: text('genre').notNull(),
-    topic: text('topic'),
     question: text('question').notNull(),
     choices: jsonb('choices').$type<string[]>().notNull(),
     answers: jsonb('answers').$type<number[]>().notNull(),

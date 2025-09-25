@@ -1,14 +1,14 @@
 四択問題ジェネレーター＆学習支援アプリ（Next.js + Vercel AI SDK + Drizzle + Postgres）
 
-2025-09-25 時点の概要。ジャンル/サブジャンル管理、バッチ問題生成、キーワード管理、プロンプト管理、チャット、ランダム練習を備えた最小構成の学習アプリです。
+2025-09-26 時点の概要。ジャンル管理、バッチ問題生成、キーワード管理、プロンプト管理、チャット、ランダム練習を備えた最小構成の学習アプリです。サブジャンル/トピック機能は撤廃しました（詳細は下記）。
 
 ## ✅ 機能サマリ
 
 - 2〜8 択・複数正解に対応した問題を AI またはモックで 1〜50 問まとめて生成（正解数の最小/最大を指定可）
-- ジャンル / サブジャンル / 任意トピックで範囲指定
+- ジャンルで範囲指定（サブジャンル/トピックは撤廃）
 - 問題の保存・検索・削除、ランダム 1 問練習
 - 学習補助チャット（選択した問題を文脈に Q&A）
-- ジャンル / サブジャンルの管理 UI（追加・更新・削除）
+- ジャンルの管理 UI（追加・更新・削除）
 - キーワードの生成・管理（ジャンル単位、重複はユニーク制約で抑止）
 - プロンプトテンプレートの管理（テンプレートと任意の system プロンプト）
 - OPENAI_API_KEY 未設定でもモックで一通り試せます
@@ -23,14 +23,14 @@
 ## データと契約（ハイレベル）
 
 - 問題オブジェクト: `{ question, choices(2..8), answerIndexes(一意な番号配列), explanations(選択肢ごとの解説) }`
-- DB テーブル（抜粋）: `questions`（choices/answers/explanation は JSONB）、`genres`、`subgenres`（複合一意: genreId+name）、`prompts`、`keywords`
+- DB テーブル（抜粋）: `questions`（choices/answers/explanation は JSONB）、`genres`、`prompts`、`keywords`
 - 生成後は選択肢をシャッフルし、`answerIndexes` を再マッピングして整合性を保持
 
 ## 🔌 API（主要なもの）
 
 - POST `/api/questions/generate` … 問題をまとめて生成（count, model, minCorrect/maxCorrect, concurrency, choiceCount, promptName 等）
 - POST `/api/chat` … チャット回答を返却（JSON で単発応答）
-- GET `/api/genres` / `/api/subgenres?genreId=` … 一覧取得
+- GET `/api/genres` … 一覧取得
 - GET `/api/keywords?genreId=` / POST `/api/keywords` … キーワード一覧 / 生成
 - GET `/api/prompts` … プロンプト一覧（UI 側で既定にフォールバック）
 
@@ -41,7 +41,7 @@
 - `/` … 生成・保存・チャット
 - `/saved` … 保存一覧/検索/削除
 - `/practice` … ランダム 1 問練習
-- `/admin/genres` … ジャンル & サブジャンル管理
+- `/admin/genres` … ジャンル管理
 - `/admin/keywords` … キーワード管理/生成
 - `/admin/prompts` … プロンプト管理
 
@@ -50,6 +50,11 @@
 - 依存関係をインストールし、環境変数 `DATABASE_URL` を設定（docker-compose の Postgres を利用可能）。`OPENAI_API_KEY` は任意。
 - Drizzle のマイグレーションを適用してからアプリを起動。
 - 開発サーバー起動後はトップページから生成/保存、各管理ページから CRUD が行えます。
+
+### 仕様変更（2025-09-26）
+- サブジャンル機能を完全削除（テーブル・API・UI）。
+- questions テーブルから topic 列を削除。トピックの概念も撤廃。
+- トップページの「トピック」は検索ボックスとしてのみ残し、キーワード候補のフィルタに利用。生成のテンプレ置換やAPI送信は行いません。
 
 ## 🔐 環境変数（主要）
 

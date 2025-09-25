@@ -37,7 +37,7 @@ export default async function AdminPromptsPage() {
                                 className="min-h-[200px] w-full rounded border p-2 font-mono text-sm"
                             />
                             <p className="text-xs text-slate-500">
-                                利用可能なプレースホルダー: {`{genre}`}, {`{subgenre}`}, {`{topic}`}, {`{count}`}, {`{choiceCount}`}, {`{minCorrect}`}, {`{maxCorrect}` }。これらは送信時に置換されます。
+                                利用可能なプレースホルダー: {`{genre}`}, {`{keywords}`}, {`{count}`}, {`{choiceCount}`}, {`{minCorrect}`}, {`{maxCorrect}` }。これらは送信時に置換されます。
                                 条件分岐などの複雑なロジックはサポートしません。
                             </p>
                         </div>
@@ -87,7 +87,7 @@ export default async function AdminPromptsPage() {
                                         className="min-h-[200px] w-full rounded border p-2 font-mono text-sm"
                                     />
                                     <p className="text-xs text-slate-500">
-                                        利用可能なプレースホルダー: {`{genre}`}, {`{subgenre}`}, {`{topic}`}, {`{count}`}, {`{choiceCount}`}, {`{minCorrect}`}, {`{maxCorrect}` }。これらは送信時に置換されます。
+                                        利用可能なプレースホルダー: {`{genre}`}, {`{keywords}`}, {`{count}`}, {`{choiceCount}`}, {`{minCorrect}`}, {`{maxCorrect}` }。これらは送信時に置換されます。
                                     </p>
                                 </div>
                                 <div className="grid gap-2">

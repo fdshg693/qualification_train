@@ -1,7 +1,7 @@
 'use server'
 
 import { db } from '@/db/client'
-import { questions, genres, subgenres, prompts, keywords } from '@/db/schema'
+import { questions, genres, prompts, keywords } from '@/db/schema'
 import { eq, and, like, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
@@ -10,7 +10,6 @@ import { generateObject } from 'ai'
 
 type SaveParams = {
     genre: string
-    topic?: string
     question: string
     choices: string[]
     answerIndexes: number[]
@@ -27,7 +26,6 @@ export async function saveQuestion(params: SaveParams) {
     const answers = Array.from(new Set((params.answerIndexes ?? []).filter((i) => i >= 0 && i <= maxIdx))).sort((a,b)=>a-b)
     await db.insert(questions).values({
         genre: params.genre,
-        topic: params.topic ?? null,
         question: params.question,
         choices,
         answers,
@@ -58,7 +56,7 @@ export async function getRandomQuestion() {
     return {
         id: q.id,
         genre: q.genre,
-        topic: q.topic ?? undefined,
+        topic: undefined,
         question: q.question,
         choices: (q.choices as string[]) ?? [],
         answerIndexes: ((q.answers as number[]) ?? []).filter((i) => Number.isInteger(i) && i >= 0 && i < ((q.choices as string[]) ?? []).length),
@@ -106,37 +104,7 @@ export async function deleteQuestion(id: number) {
     revalidatePath('/practice')
 }
 
-// ===== Subgenres (サブジャンル) =====
-export async function listSubgenres(opts?: { genreId?: number }) {
-    const { genreId } = opts ?? {}
-    const rows = await db
-        .select()
-        .from(subgenres)
-        .where(genreId ? eq(subgenres.genreId, genreId) : undefined as any)
-        .orderBy(subgenres.createdAt)
-    return rows
-}
-
-export async function createSubgenre(genreId: number, name: string) {
-    if (!genreId || !name?.trim()) return
-    await db.insert(subgenres).values({ genreId, name: name.trim() })
-    revalidatePath('/admin/genres')
-    revalidatePath('/')
-}
-
-export async function updateSubgenre(id: number, name: string) {
-    if (!id || !name?.trim()) return
-    await db.update(subgenres).set({ name: name.trim() }).where(eq(subgenres.id, id))
-    revalidatePath('/admin/genres')
-    revalidatePath('/')
-}
-
-export async function deleteSubgenre(id: number) {
-    if (!id) return
-    await db.delete(subgenres).where(eq(subgenres.id, id))
-    revalidatePath('/admin/genres')
-    revalidatePath('/')
-}
+// サブジャンル機能は廃止しました
 
 // ===== Prompts (テンプレート) =====
 const DEFAULT_PROMPT_NAME = 'default'

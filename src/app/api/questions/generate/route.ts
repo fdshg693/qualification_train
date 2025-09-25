@@ -9,8 +9,7 @@ import { and, eq } from 'drizzle-orm'
 // Accept count and model for batch generation (default 1, default model gpt-4.1)
 const BodySchema = z.object({
     genre: z.string().optional(),
-    subgenre: z.string().optional(),
-    topic: z.string().optional(),
+    // subgenre/topic are removed from generation context
     selectedKeywords: z.array(z.string()).optional(),
     count: z.number().int().min(1).max(50).optional(),
     model: z.string().optional(),
@@ -39,8 +38,7 @@ export async function POST(req: Request) {
         const parsed = BodySchema.safeParse(json)
         if (parsed.success) {
             genre = parsed.data.genre
-            subgenre = parsed.data.subgenre
-            topic = parsed.data.topic
+            // ignore subgenre/topic even if provided
             selectedKeywords = parsed.data.selectedKeywords
             count = parsed.data.count ?? 1
             model = parsed.data.model
@@ -58,8 +56,7 @@ export async function POST(req: Request) {
     function composePrompt(t: string) {
         const map: Record<string, string> = {
             '{genre}': genre ?? '',
-            '{subgenre}': subgenre ?? '',
-            '{topic}': topic ?? '',
+            // subgenre/topic placeholders are no longer supported
             '{keywords}': (selectedKeywords && selectedKeywords.length ? selectedKeywords.join(', ') : ''),
             '{count}': String(count ?? 1),
             '{minCorrect}': String(minCorrect ?? ''),
@@ -97,6 +94,6 @@ export async function POST(req: Request) {
         : ''
     const composed = [composePrompt(template), includeNote, exclusionNote].filter(Boolean).join('\n\n')
     const system = systemRaw ? composePrompt(systemRaw) : undefined
-    const questions = await generateQuestions({ genre, subgenre, topic, count, model, minCorrect, maxCorrect, prompt: composed, system, concurrency, choiceCount })
+    const questions = await generateQuestions({ genre, count, model, minCorrect, maxCorrect, prompt: composed, system, concurrency, choiceCount })
     return NextResponse.json({ questions })
 }

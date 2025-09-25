@@ -7,8 +7,6 @@ import { DEFAULT_SYSTEM_PROMPT } from '@/lib/default-prompts'
 
 export type GenerateParams = {
     genre?: string
-    subgenre?: string
-    topic?: string
     count: number // desired number of questions (1..50 reasonable)
     model?: string
     minCorrect?: number // desired minimum number of correct choices per question (1..4)
@@ -44,7 +42,7 @@ function normalizeQuestion(q: Question): Question {
 }
 
 export async function generateQuestions(params: GenerateParams): Promise<Question[]> {
-    const { genre, subgenre, topic, prompt } = params
+    const { genre, prompt } = params
     const count = Math.max(1, Math.min(50, Math.floor(params.count)))
     const allowedModels = ['gpt-5', 'gpt-5-mini', 'gpt-4.1', 'gpt40']
     const model = allowedModels.includes(params.model ?? '') ? (params.model as string) : 'gpt-4.1'
@@ -143,7 +141,7 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
     const openai = createOpenAI({ apiKey })
     const baseContext = prompt && prompt.trim().length
         ? prompt.trim()
-        : `ジャンル: ${genre ?? '未指定'}\nサブジャンル: ${subgenre ?? '未指定'}\nサブトピック: ${topic ?? '未指定'}\n選択肢数: ${choiceCount}`
+        : `ジャンル: ${genre ?? '未指定'}\n選択肢数: ${choiceCount}`
 
     const concurrency = Math.max(1, Math.min(4, Math.floor(params.concurrency ?? 2)))
     const results: (Question | undefined)[] = new Array(count)

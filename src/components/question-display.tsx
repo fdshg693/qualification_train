@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 export type QuestionDisplayProps = {
     question: Question
     // optional: show genre/topic meta
-    meta?: { genre?: string; topic?: string | null }
+    meta?: { genre?: string }
 }
 
 export function QuestionDisplay({ question, meta }: QuestionDisplayProps) {
@@ -56,7 +56,6 @@ export function QuestionDisplay({ question, meta }: QuestionDisplayProps) {
                 {meta && (
                     <div className="text-xs text-slate-500 flex gap-2">
                         {meta.genre && <span>ジャンル: {meta.genre}</span>}
-                        {meta.topic && <span>トピック: {meta.topic}</span>}
                     </div>
                 )}
                 <p className="font-medium leading-relaxed">{question.question}</p>
