@@ -22,6 +22,25 @@ export const questions = pgTable('questions', {
 export type InsertQuestion = typeof questions.$inferInsert
 export type SelectQuestion = typeof questions.$inferSelect
 
+// ===== Mock exam aggregated sets =====
+export const mockExamSets = pgTable('mock_exam_sets', {
+    id: serial('id').primaryKey(),
+    title: text('title').notNull(),
+    genre: text('genre').notNull(),
+    keywordNames: jsonb('keyword_names').$type<string[]>().notNull(),
+    questionCount: integer('question_count').notNull(),
+    questionsByKeyword: jsonb('questions_by_keyword').$type<Array<{ keyword: string; questions: {
+        question: string
+        choices: string[]
+        answerIndexes: number[]
+        explanations: string[]
+    }[] }>>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+})
+
+export type InsertMockExamSet = typeof mockExamSets.$inferInsert
+export type SelectMockExamSet = typeof mockExamSets.$inferSelect
+
 // ===== Prompts (for prompt template management) =====
 export const prompts = pgTable('prompts', {
     id: serial('id').primaryKey(),

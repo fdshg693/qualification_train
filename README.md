@@ -87,12 +87,13 @@
 	例: あるキーワードで 3 問生成され、各問が 3 正解なら分母は 3×3=9。ユーザが重複なく正しい選択肢を 6 個選んでいたら 6/9 と表示します。
 
 保存
-- 「保存」ボタンを押すと、現在表示されている問題をまとめて `POST /api/questions/bulk-save` に送信して DB に永続化します（保存は解答後に有効化されます）。
+- 「保存」ボタンを押すと、現在表示されている問題をまとめて `POST /api/mock-exams` に送信し、新設の `mock_exam_sets` テーブルに1セットとして保存します（保存は解答後に有効化されます）。保存名は任意入力でき、未入力の場合はジャンル名と時刻から自動生成します。
+- 保存済みセットはドロップダウンから選択して読み込みでき、同ページ上で問題一覧を再表示できます。
 
 実装ノート（開発者向け）
 - コンポーネント: `src/components/mock-exam.tsx`（主要ロジック）
 - ルート: `src/app/mock-exam/page.tsx`
-- バルク保存 API: `src/app/api/questions/bulk-save/route.ts`
+- 模擬試験セット API: `src/app/api/mock-exams/route.ts` と `src/app/api/mock-exams/[id]/route.ts`
 - 生成 API: `src/app/api/questions/generate/route.ts`（既存）
 - キーワード取得: `GET /api/keywords?genreId=<id>&parentId=null`
 - 選択肢のシャッフルと answerIndexes の再マップはクライアント側で行い、採点は original index（シャッフル前のインデックス）で判定します。
@@ -102,7 +103,7 @@
 - 生成時にモデルや生成数を高めにすると時間と API コストが増えます。必要に応じて `concurrency` や件数を調整してください。
 
 今後の改善案
-- 生成中のプログレス表示、生成ジョブのキャンセル、部分保存（キーワード単位）
+- 生成ジョブのキャンセル、部分保存（キーワード単位）
 - 選択状態の URL 共有（クエリ）やローカル保存
 - まとめに「完全正解した設問数 / 設問数」などの指標を併記
 

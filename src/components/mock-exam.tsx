@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -9,6 +9,8 @@ import type { Question } from '@/lib/schema'
 
 type GenreRow = { id: number; name: string }
 type KeywordRow = { id: number; name: string; parentId: number | null }
+type SavedSetSummary = { id: number; title: string; genre: string; keywordNames: string[]; questionCount: number; createdAt: string }
+type SavedGroup = { keyword: string; questions: Question[] }
 
 export function MockExam({ initialGenres }: { initialGenres: GenreRow[] }) {
   const [genreId, setGenreId] = useState<number | ''>('')
@@ -20,6 +22,17 @@ export function MockExam({ initialGenres }: { initialGenres: GenreRow[] }) {
   const [loading, setLoading] = useState(false)
   const [questionsByKeyword, setQuestionsByKeyword] = useState<Record<string, Question[]>>({})
   const [examAnswered, setExamAnswered] = useState(false)
+  const [generationProgress, setGenerationProgress] = useState<{
+    completed: number
+    total: number
+    keywordIndex: number
+    totalKeywords: number
+  } | null>(null)
+  const [collectionTitle, setCollectionTitle] = useState('')
+  const [savedSets, setSavedSets] = useState<SavedSetSummary[]>([])
+  const [selectedSetId, setSelectedSetId] = useState<number | ''>('')
+  const [loadingSetId, setLoadingSetId] = useState<number | null>(null)
+  const [selections, setSelections] = useState<Record<string, number[]>>({})
 
   // For grading summary: treat each keyword as a topic
   const flatQuestions = useMemo(() => {
@@ -51,20 +64,40 @@ export function MockExam({ initialGenres }: { initialGenres: GenreRow[] }) {
     return () => { aborted = true }
   }, [genreId])
 
-  async function handleGenerate() {
-  if (!genreId || !keywords.length) return
-  const activeKeywords = keywords.filter(k => selectedKeywordIds.has(k.id))
-  if (!activeKeywords.length) return
-    setLoading(true)
-  setQuestionsByKeyword({})
-  setExamAnswered(false)
+  const loadSavedSets = useCallback(async () => {
     try {
-      // Fetch genre name to pass to generator
-      const genreRow = initialGenres.find(g => g.id === genreId)
+      const res = await fetch('/api/mock-exams')
+      if (!res.ok) return
+      const data: SavedSetSummary[] = await res.json()
+      setSavedSets(data)
+    } catch (err) {
+      console.error('[mock-exam] load saved sets error', err)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadSavedSets()
+  }, [loadSavedSets])
+
+  async function handleGenerate() {
+    if (!genreId || !keywords.length) return
+    const activeKeywords = keywords.filter((k) => selectedKeywordIds.has(k.id))
+    if (!activeKeywords.length) return
+    const count = Math.max(1, Math.min(50, perKeywordCount))
+    const totalTarget = activeKeywords.length * count
+    setLoading(true)
+    setQuestionsByKeyword({})
+    setSelections({})
+    setExamAnswered(false)
+    setSelectedSetId('')
+    setGenerationProgress({ completed: 0, total: totalTarget, keywordIndex: 0, totalKeywords: activeKeywords.length })
+    try {
+      const genreRow = initialGenres.find((g) => g.id === genreId)
       const genreName = genreRow?.name
       const next: Record<string, Question[]> = {}
-  for (const kw of activeKeywords) {
-        const count = Math.max(1, Math.min(50, perKeywordCount))
+      let completedQuestions = 0
+      for (let idx = 0; idx < activeKeywords.length; idx++) {
+        const kw = activeKeywords[idx]
         const body = {
           genre: genreName,
           selectedKeywords: [kw.name],
@@ -75,37 +108,76 @@ export function MockExam({ initialGenres }: { initialGenres: GenreRow[] }) {
           maxCorrect: 3,
           concurrency: 2,
         }
-        // Ask AI per keyword with dedup inside that keyword scope only (handled in lib)
         const res = await fetch('/api/questions/generate', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(body),
         })
         const data = await res.json()
-        const list: Question[] = (data?.questions ?? [])
+        const list: Question[] = data?.questions ?? []
         next[kw.name] = list
-        // Brief delay to avoid hitting rate limits too hard
-        await new Promise(r => setTimeout(r, 50))
+        completedQuestions += list.length
+        setGenerationProgress({
+          completed: Math.min(completedQuestions, totalTarget),
+          total: totalTarget,
+          keywordIndex: idx + 1,
+          totalKeywords: activeKeywords.length,
+        })
+        await new Promise((r) => setTimeout(r, 50))
       }
       setQuestionsByKeyword(next)
     } finally {
       setLoading(false)
+      setGenerationProgress(null)
     }
   }
 
   async function handleSaveAll() {
-    const genreName = initialGenres.find(g => g.id === genreId)?.name || ''
-    const payload: { genre: string; questions: Question[] } = {
-      genre: genreName,
-      questions: flatQuestions.map(f => f.question),
-    }
-    const res = await fetch('/api/questions/bulk-save', {
+    const genreName = initialGenres.find((g) => g.id === genreId)?.name || '未分類'
+    const groups = Object.entries(questionsByKeyword).map(([keyword, qs]) => ({ keyword, questions: qs }))
+    if (!groups.length) return
+    const title = collectionTitle.trim() || `${genreName} - ${new Date().toLocaleString('ja-JP')}`
+    const res = await fetch('/api/mock-exams', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        title,
+        genre: genreName,
+        keywordNames: groups.map((g) => g.keyword),
+        groups,
+      }),
     })
     if (res.ok) {
-      // no-op; could toast
+      const data = await res.json()
+      setCollectionTitle('')
+      if (data?.id) setSelectedSetId(Number(data.id))
+      await loadSavedSets()
+    }
+  }
+
+  async function handleLoadSet(id: number) {
+    if (!id) return
+    setLoadingSetId(id)
+    try {
+      const res = await fetch(`/api/mock-exams/${id}`)
+      if (!res.ok) return
+      const data: { title: string; genre: string; groups: SavedGroup[] } = await res.json()
+      const map: Record<string, Question[]> = {}
+      for (const group of data.groups || []) {
+        if (!group?.keyword) continue
+        map[group.keyword] = Array.isArray(group.questions) ? group.questions : []
+      }
+      setQuestionsByKeyword(map)
+      setSelections({})
+      setExamAnswered(false)
+      setGenerationProgress(null)
+      setSelectedSetId(id)
+      const genreRow = initialGenres.find((g) => g.name === data.genre)
+      if (genreRow) setGenreId(genreRow.id)
+    } catch (err) {
+      console.error('[mock-exam] load set error', err)
+    } finally {
+      setLoadingSetId(null)
     }
   }
 
@@ -113,7 +185,6 @@ export function MockExam({ initialGenres }: { initialGenres: GenreRow[] }) {
   // selection capture state: key = `${keyword}#${idx}`, value = array of original indexes selected
 
   // Track selections per question to compute summary
-  const [selections, setSelections] = useState<Record<string, number[]>>({})
   const setSelectionFor = (key: string, idx: number[]) => setSelections(prev => ({ ...prev, [key]: idx }))
 
   const computedSummary = useMemo(() => {
@@ -171,6 +242,47 @@ export function MockExam({ initialGenres }: { initialGenres: GenreRow[] }) {
         </Button>
       </form>
 
+      {generationProgress && generationProgress.total > 0 && (
+        <div className="text-sm text-slate-600">
+          生成進捗: {generationProgress.completed} / {generationProgress.total} 問 （キーワード {Math.min(generationProgress.keywordIndex, generationProgress.totalKeywords)} / {generationProgress.totalKeywords}）
+        </div>
+      )}
+
+      {savedSets.length > 0 && (
+        <div className="border rounded p-3 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-sm font-medium mr-2">保存済みの模擬試験</div>
+            <Select
+              className="w-64"
+              value={selectedSetId ? String(selectedSetId) : ''}
+              onChange={(e) => {
+                const value = e.target.value
+                if (!value) {
+                  setSelectedSetId('')
+                  return
+                }
+                const id = Number(value)
+                setSelectedSetId(id)
+                void handleLoadSet(id)
+              }}
+            >
+              <option value="">選択してください</option>
+              {savedSets.map((set) => (
+                <option key={set.id} value={set.id}>
+                  {set.title}（{set.questionCount}問）
+                </option>
+              ))}
+            </Select>
+            <Button type="button" variant="outline" className="h-8 px-3" onClick={() => { void loadSavedSets() }}>
+              再読み込み
+            </Button>
+          </div>
+          {loadingSetId && (
+            <div className="text-xs text-slate-500">読み込み中...</div>
+          )}
+        </div>
+      )}
+
       {genreId && (
         <div className="space-y-2">
           <div className="text-sm text-slate-600">直下のキーワード数: {keywords.length}</div>
@@ -222,8 +334,14 @@ export function MockExam({ initialGenres }: { initialGenres: GenreRow[] }) {
       {/* Questions grid by keyword */}
       {Object.keys(questionsByKeyword).length > 0 && (
         <div className="space-y-6">
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => setExamAnswered(true)} disabled={examAnswered}>解答</Button>
+            <Input
+              className="w-52"
+              placeholder="保存名 (任意)"
+              value={collectionTitle}
+              onChange={(e) => setCollectionTitle(e.target.value)}
+            />
             <Button onClick={handleSaveAll} disabled={!canSave}>保存</Button>
           </div>
           {Object.keys(questionsByKeyword).map((kw) => (
