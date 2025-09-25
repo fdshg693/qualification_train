@@ -20,8 +20,12 @@ export default function HomePage() {
     // サブジャンル (空文字は「未選択」= ジャンルベースで出題)
     const [subgenre, setSubgenre] = useState<string>('')
     const [topic, setTopic] = useState<string>('')
-    // ジャンルに紐づくキーワード（除外フラグfalseのみを選択候補として扱う）
+    // ジャンルに紐づくキーワード（除外フラグfalseのみ）。表示は階層ブラウザで段階的に取得する。
     const [genreKeywords, setGenreKeywords] = useState<string[]>([])
+    // 階層ブラウザ用の親スタック（null=トップ）。値は keyword id。
+    const [kwStack, setKwStack] = useState<number[]>([])
+    // 現在表示中の階層（親の子リスト）
+    const [currentLevel, setCurrentLevel] = useState<Array<{ id: number; name: string }>>([])
     const [selectedKeywords, setSelectedKeywords] = useState<string[]>([])
     const [loading, setLoading] = useState(false)
     const [count, setCount] = useState<number>(1)
@@ -70,14 +74,15 @@ export default function HomePage() {
                         setSubgenre('') // 空 = 全体(ジャンル)から出題
                         // ジャンルキーワード（除外/非除外）も初期取得
                         try {
-                            const r = await fetch(`/api/keywords?genreId=${g.id}`, { cache: 'no-store' })
+                            // トップレベルのみ取得
+                            const r = await fetch(`/api/keywords?genreId=${g.id}&parentId=null`, { cache: 'no-store' })
                             const rows = (await r.json()) as Array<{ id: number; genreId: number; name: string; excluded?: boolean }>
                             if (!canceled) {
                                 const ex = (rows || []).filter(k => (k as any).excluded === true).map(k => k.name)
-                                const avail = (rows || []).filter(k => (k as any).excluded !== true).map(k => k.name)
                                 setExcludedKeywords(ex)
-                                setGenreKeywords(avail)
-                                // ジャンルが変わったら選択リセット
+                                setGenreKeywords([]) // 平lat配列は非推奨化（互換のため残すが未使用）
+                                setKwStack([])
+                                setCurrentLevel((rows || []).filter(k => (k as any).excluded !== true).map(k => ({ id: k.id, name: k.name })))
                                 setSelectedKeywords([])
                             }
                         } catch { setExcludedKeywords([]) }
@@ -134,14 +139,13 @@ export default function HomePage() {
                     setSubgenre((prev) => (prev && subs.some((s) => s.name === prev) ? prev : ''))
                     // 除外キーワードも取得
                     try {
-                        const r = await fetch(`/api/keywords?genreId=${g.id}`, { cache: 'no-store' })
+                        const r = await fetch(`/api/keywords?genreId=${g.id}&parentId=null`, { cache: 'no-store' })
                         const rows = (await r.json()) as Array<{ id: number; genreId: number; name: string; excluded?: boolean }>
                         if (!canceled) {
                             const ex = (rows || []).filter(k => (k as any).excluded === true).map(k => k.name)
-                            const avail = (rows || []).filter(k => (k as any).excluded !== true).map(k => k.name)
                             setExcludedKeywords(ex)
-                            setGenreKeywords(avail)
-                            // ジャンル変更時、選択リセット（サブジャンルは影響しないがジャンル依存のため）
+                            setKwStack([])
+                            setCurrentLevel((rows || []).filter(k => (k as any).excluded !== true).map(k => ({ id: k.id, name: k.name })))
                             setSelectedKeywords([])
                         }
                     } catch { setExcludedKeywords([]) }
@@ -338,10 +342,10 @@ export default function HomePage() {
                         <span className="text-xs text-slate-600">トピック</span>
                         <Input className="h-8 px-2 py-1 text-sm min-w-[14rem]" placeholder="例: OSI参照モデル" value={topic} onChange={(e) => setTopic(e.target.value)} />
                     </div>
-                    {/* 関連キーワード（複数選択） */}
-                    <div className="flex flex-col gap-1 min-w-[16rem]">
-                        <span className="text-xs text-slate-600">関連キーワード（{selectedKeywords.length}/{genreKeywords.length}）</span>
-                        <div className="border rounded p-2 bg-white w-full max-w-[28rem]">
+                    {/* 関連キーワード（階層ブラウザ + 複数選択） */}
+                    <div className="flex flex-col gap-1 min-w-[20rem]">
+                        <span className="text-xs text-slate-600">関連キーワード（{selectedKeywords.length}件 選択中）</span>
+                        <div className="border rounded p-2 bg-white w-full max-w-[32rem]">
                             {/* 選択済みチップ */}
                             <div className="flex flex-wrap gap-1 mb-2 min-h-[1.25rem]">
                                 {selectedKeywords.map((k) => (
@@ -359,22 +363,68 @@ export default function HomePage() {
                                     <span className="text-[11px] text-slate-400">未選択</span>
                                 )}
                             </div>
-                            {/* 候補一覧（topic で簡易フィルタ） */}
-                            <div className="max-h-28 overflow-auto custom-scroll border-t pt-2">
+                            {/* パンくず + 検索 */}
+                            <div className="flex items-end justify-between gap-2 border-t pt-2">
+                                <div className="text-[12px] text-slate-700 flex items-center gap-1 flex-wrap">
+                                    <span className="text-slate-500">階層:</span>
+                                    <button
+                                        className="underline decoration-dotted hover:opacity-80"
+                                        onClick={async (e) => {
+                                            e.preventDefault()
+                                            setKwStack([])
+                                            // ルート再取得
+                                            const g = genres.find((x) => x.name === genre)
+                                            if (!g) return
+                                            const r = await fetch(`/api/keywords?genreId=${g.id}&parentId=null`, { cache: 'no-store' })
+                                            const rows = (await r.json()) as Array<{ id: number; name: string; excluded?: boolean }>
+                                            setCurrentLevel((rows || []).filter(k => (k as any).excluded !== true).map(k => ({ id: k.id, name: k.name })))
+                                        }}
+                                    >トップ</button>
+                                    {kwStack.map((id, idx) => (
+                                        <span key={id} className="flex items-center gap-1">
+                                            <span className="text-slate-400">›</span>
+                                            <button
+                                                className="underline decoration-dotted hover:opacity-80"
+                                                onClick={async (e) => {
+                                                    e.preventDefault()
+                                                    const g = genres.find((x) => x.name === genre)
+                                                    if (!g) return
+                                                    const toDepth = idx + 1
+                                                    const pid = kwStack[idx]
+                                                    const r = await fetch(`/api/keywords?genreId=${g.id}&parentId=${pid}`, { cache: 'no-store' })
+                                                    const rows = (await r.json()) as Array<{ id: number; name: string; excluded?: boolean }>
+                                                    setKwStack(kwStack.slice(0, toDepth))
+                                                    setCurrentLevel((rows || []).filter(k => (k as any).excluded !== true).map(k => ({ id: k.id, name: k.name })))
+                                                }}
+                                            >Lv{idx + 1}</button>
+                                        </span>
+                                    ))}
+                                </div>
+                                <div className="flex items-end gap-1">
+                                    <Input
+                                        className="h-7 px-2 py-1 text-xs min-w-[12rem]"
+                                        placeholder="検索ワード（部分一致）"
+                                        value={topic}
+                                        onChange={(e) => setTopic(e.target.value)}
+                                        title="フィルタキーワード（生成トピックと兼用）"
+                                    />
+                                </div>
+                            </div>
+                            {/* 現在階層の候補一覧 */}
+                            <div className="max-h-40 overflow-auto custom-scroll mt-2">
                                 {(() => {
                                     const tokens = (topic || '').split(/\s+/).filter(Boolean)
-                                    const list = genreKeywords.filter((k) => {
+                                    const list = currentLevel.filter((k) => {
                                         if (!tokens.length) return true
-                                        const lower = k.toLowerCase()
+                                        const lower = k.name.toLowerCase()
                                         return tokens.some((t) => lower.includes(t.toLowerCase()))
                                     })
-                                    const visible = list.slice(0, 50) // 上限
-                                    return visible.length ? (
+                                    return list.length ? (
                                         <div className="grid grid-cols-2 gap-1">
-                                            {visible.map((k) => {
-                                                const checked = selectedKeywords.includes(k)
+                                            {list.map((k) => {
+                                                const checked = selectedKeywords.includes(k.name)
                                                 return (
-                                                    <label key={k} className="flex items-center gap-1 text-xs cursor-pointer select-none">
+                                                    <div key={k.id} className="flex items-center gap-1 text-xs">
                                                         <input
                                                             type="checkbox"
                                                             className="scale-90"
@@ -383,14 +433,27 @@ export default function HomePage() {
                                                                 const on = e.target.checked
                                                                 setSelectedKeywords((prev) => {
                                                                     const set = new Set(prev)
-                                                                    if (on) set.add(k)
-                                                                    else set.delete(k)
+                                                                    if (on) set.add(k.name)
+                                                                    else set.delete(k.name)
                                                                     return Array.from(set)
                                                                 })
                                                             }}
                                                         />
-                                                        <span className="truncate" title={k}>{k}</span>
-                                                    </label>
+                                                        <span className="truncate" title={k.name}>{k.name}</span>
+                                                        <button
+                                                            className="ml-auto text-[10px] px-1 py-0.5 border rounded hover:bg-slate-50"
+                                                            title="子を表示"
+                                                            onClick={async (e) => {
+                                                                e.preventDefault()
+                                                                const g = genres.find((x) => x.name === genre)
+                                                                if (!g) return
+                                                                const r = await fetch(`/api/keywords?genreId=${g.id}&parentId=${k.id}`, { cache: 'no-store' })
+                                                                const rows = (await r.json()) as Array<{ id: number; name: string; excluded?: boolean }>
+                                                                setKwStack((prev) => [...prev, k.id])
+                                                                setCurrentLevel((rows || []).filter(x => (x as any).excluded !== true).map(x => ({ id: x.id, name: x.name })))
+                                                            }}
+                                                        >子を見る</button>
+                                                    </div>
                                                 )
                                             })}
                                         </div>
@@ -399,11 +462,30 @@ export default function HomePage() {
                                     )
                                 })()}
                             </div>
-                            <div className="mt-2 flex gap-2 justify-end">
+                            <div className="mt-2 flex gap-2 justify-between">
                                 <Button type="button" variant="outline" className="h-7 px-2 text-xs"
                                     onClick={() => setSelectedKeywords([])}
                                     disabled={!selectedKeywords.length}
                                 >クリア</Button>
+                                {kwStack.length > 0 && (
+                                    <Button type="button" variant="outline" className="h-7 px-2 text-xs"
+                                        onClick={async () => {
+                                            const g = genres.find((x) => x.name === genre)
+                                            if (!g) return
+                                            const next = kwStack.slice(0, -1)
+                                            let r: Response
+                                            if (next.length === 0) {
+                                                r = await fetch(`/api/keywords?genreId=${g.id}&parentId=null`, { cache: 'no-store' })
+                                            } else {
+                                                const pid = next[next.length - 1]
+                                                r = await fetch(`/api/keywords?genreId=${g.id}&parentId=${pid}`, { cache: 'no-store' })
+                                            }
+                                            const rows = (await r.json()) as Array<{ id: number; name: string; excluded?: boolean }>
+                                            setKwStack(next)
+                                            setCurrentLevel((rows || []).filter(x => (x as any).excluded !== true).map(x => ({ id: x.id, name: x.name })))
+                                        }}
+                                    >一つ上へ</Button>
+                                )}
                             </div>
                         </div>
                     </div>

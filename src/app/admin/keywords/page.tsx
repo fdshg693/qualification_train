@@ -12,6 +12,24 @@ export default async function AdminKeywordsPage({ searchParams }: { searchParams
     const rawParentId = sp?.parentId
     const parentId = rawParentId === 'null' ? null : (rawParentId ? Number(rawParentId) : null)
     const parent = parentId ? await getKeyword(parentId) : null
+    // パンくず用: 祖先を辿る
+    const crumbs: Array<{ id: number | null; name: string }> = []
+    const currentGenre = genres.find(g => g.id === currentId)
+    if (currentGenre) crumbs.push({ id: null, name: currentGenre.name })
+    if (parent) {
+        const stack: Array<{ id: number; name: string; parentId: number | null }> = []
+        let p: any = parent
+        while (p) {
+            stack.unshift({ id: p.id, name: p.name, parentId: p.parentId ?? null })
+            if (p.parentId) {
+                // 親を辿る
+                p = await getKeyword(p.parentId)
+            } else {
+                break
+            }
+        }
+        for (const s of stack) crumbs.push({ id: s.id, name: s.name })
+    }
     const initialKeywords = currentId ? await listKeywords({ genreId: currentId!, parentId }) : []
     return (
         <div className="space-y-4">
@@ -65,6 +83,23 @@ export default async function AdminKeywordsPage({ searchParams }: { searchParams
                     <div className="font-medium">一覧 / 手動追加</div>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                    {/* パンくず */}
+                    <nav className="text-sm text-slate-700 flex flex-wrap items-center gap-1">
+                        {crumbs.map((c, idx) => (
+                            <span key={`${c.id ?? 'top'}-${idx}`} className="flex items-center gap-1">
+                                {idx > 0 && <span className="text-slate-400">›</span>}
+                                {idx === crumbs.length - 1 ? (
+                                    <span className="font-medium">{c.name}</span>
+                                ) : (
+                                    <form method="GET" className="inline">
+                                        <input type="hidden" name="genreId" value={currentId ? String(currentId) : ''} />
+                                        <input type="hidden" name="parentId" value={c.id ? String(c.id) : 'null'} />
+                                        <button className="underline decoration-dotted hover:opacity-80" type="submit">{c.name}</button>
+                                    </form>
+                                )}
+                            </span>
+                        ))}
+                    </nav>
                     <form method="GET" className="flex items-end gap-2">
                         <div className="flex flex-col gap-1">
                             <span className="text-xs text-slate-600">表示するジャンル</span>
