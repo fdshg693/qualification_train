@@ -241,6 +241,13 @@ export async function deleteKeyword(id: number) {
     revalidatePath('/admin/keywords')
 }
 
+export async function toggleKeywordExcluded(id: number) {
+    if (!id) return
+    // 反転更新（Postgres式: excluded = NOT excluded）
+    await db.execute(sql`UPDATE "keywords" SET "excluded" = NOT "excluded" WHERE "id" = ${id}`)
+    revalidatePath('/admin/keywords')
+}
+
 // AI によるキーワード自動生成（ジャンルをなるべく網羅）
 const KeywordsSchema = z.object({ keywords: z.array(z.string()).min(1).max(200) })
 

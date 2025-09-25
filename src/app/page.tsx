@@ -41,6 +41,8 @@ export default function HomePage() {
     const [prompts, setPrompts] = useState<{ name: string; template: string; system?: string | null }[]>([])
     const [promptPreview, setPromptPreview] = useState<string>('')
     const [systemPreview, setSystemPreview] = useState<string>('')
+    // 除外中のキーワード（選択中ジャンル）
+    const [excludedKeywords, setExcludedKeywords] = useState<string[]>([])
 
     const { toast, message } = useToast()
     const [isSaving, startSaving] = useTransition()
@@ -63,9 +65,16 @@ export default function HomePage() {
                         if (canceled) return
                         setSubgenres(subs)
                         setSubgenre('') // 空 = 全体(ジャンル)から出題
+                        // 除外キーワードも初期取得
+                        try {
+                            const r = await fetch(`/api/keywords?genreId=${g.id}`, { cache: 'no-store' })
+                            const rows = (await r.json()) as Array<{ id: number; genreId: number; name: string; excluded?: boolean }>
+                            if (!canceled) setExcludedKeywords((rows || []).filter(k => (k as any).excluded === true).map(k => k.name))
+                        } catch { setExcludedKeywords([]) }
                     } else {
                         setSubgenres([])
                         setSubgenre('')
+                        setExcludedKeywords([])
                     }
                 } catch (e) {
                     console.error(e)
@@ -100,6 +109,7 @@ export default function HomePage() {
                     if (!genre) {
                         setSubgenres([])
                         setSubgenre('')
+                        setExcludedKeywords([])
                         return
                     }
                     const g = genres.find((x) => x.name === genre)
@@ -110,6 +120,12 @@ export default function HomePage() {
                     setSubgenres(subs)
                     // 既に選択していたものが存在するなら保持。無ければ空(未選択)を維持。
                     setSubgenre((prev) => (prev && subs.some((s) => s.name === prev) ? prev : ''))
+                    // 除外キーワードも取得
+                    try {
+                        const r = await fetch(`/api/keywords?genreId=${g.id}`, { cache: 'no-store' })
+                        const rows = (await r.json()) as Array<{ id: number; genreId: number; name: string; excluded?: boolean }>
+                        if (!canceled) setExcludedKeywords((rows || []).filter(k => (k as any).excluded === true).map(k => k.name))
+                    } catch { setExcludedKeywords([]) }
                 } catch (e) {
                     console.error(e)
                 }
@@ -232,9 +248,14 @@ export default function HomePage() {
         }
         let out = tmpl
         for (const k of Object.keys(map)) out = out.split(k).join(map[k])
+        // 除外指示をプレビューにも付与
+        const exclusionNote = excludedKeywords.length
+            ? `次のキーワードやそれに密接に関連する分野・話題は出題から除外してください（重複や言い換えも不可）: ${excludedKeywords.join(', ')}`
+            : ''
+        if (exclusionNote) out = [out, exclusionNote].join('\n\n')
         setPromptPreview(out)
         setSystemPreview((selected?.system ?? DEFAULT_SYSTEM) || DEFAULT_SYSTEM)
-    }, [prompts, promptName, genre, subgenre, topic, count, minCorrect, maxCorrect, concurrency])
+    }, [prompts, promptName, genre, subgenre, topic, count, minCorrect, maxCorrect, concurrency, choiceCount, excludedKeywords])
 
     // 仕切りバーのドラッグ開始
     function handleSeparatorMouseDown(e: ReactMouseEvent<HTMLDivElement>) {

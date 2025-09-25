@@ -1,13 +1,14 @@
-import { listGenres, listKeywords, createKeyword, updateKeyword, deleteKeyword, generateKeywords } from '@/app/actions'
+import { listGenres, listKeywords, createKeyword, updateKeyword, deleteKeyword, generateKeywords, toggleKeywordExcluded } from '@/app/actions'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 
-export default async function AdminKeywordsPage({ searchParams }: { searchParams?: { genreId?: string } }) {
+export default async function AdminKeywordsPage({ searchParams }: { searchParams?: Promise<{ genreId?: string }> }) {
     const genres = await listGenres()
+    const sp = (await searchParams) || {}
     const fallbackId = genres[0]?.id as number | undefined
-    const currentId = Number(searchParams?.genreId || fallbackId || 0) || fallbackId
+    const currentId = Number(sp?.genreId || fallbackId || 0) || fallbackId
     const initialKeywords = currentId ? await listKeywords({ genreId: currentId }) : []
     return (
         <div className="space-y-4">
@@ -95,7 +96,22 @@ export default async function AdminKeywordsPage({ searchParams }: { searchParams
                                 >
                                     <input type="hidden" name="id" defaultValue={k.id} />
                                     <Input name="name" defaultValue={k.name} className="flex-1" />
+                                    <span className={`text-xs px-2 py-1 rounded border ${k.excluded ? 'bg-red-50 text-red-700 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
+                                        {k.excluded ? '除外中' : '対象'}
+                                    </span>
                                     <Button type="submit" size="sm" variant="secondary">更新</Button>
+                                </form>
+                                <form
+                                    action={async (formData: FormData) => {
+                                        'use server'
+                                        const id = Number(formData.get('id'))
+                                        await toggleKeywordExcluded(id)
+                                    }}
+                                >
+                                    <input type="hidden" name="id" defaultValue={k.id} />
+                                    <Button type="submit" size="sm" variant={k.excluded ? 'secondary' : 'outline'}>
+                                        {k.excluded ? '除外解除' : '除外'}
+                                    </Button>
                                 </form>
                                 <form
                                     action={async (formData: FormData) => {

@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { generateQuestions } from '@/lib/generate-questions'
 import { getPrompt } from '@/app/actions'
+import { db } from '@/db/client'
+import { genres, keywords } from '@/db/schema'
+import { and, eq } from 'drizzle-orm'
 
 // Accept count and model for batch generation (default 1, default model gpt-4.1)
 const BodySchema = z.object({
@@ -64,7 +67,27 @@ export async function POST(req: Request) {
         for (const k of Object.keys(map)) out = out.split(k).join(map[k])
         return out
     }
-    const composed = composePrompt(template)
+    // 除外キーワードの指示を追加
+    let exclusionNote = ''
+    if (genre) {
+        try {
+            const gs = await db.select().from(genres).where(eq(genres.name, genre))
+            if (gs.length) {
+                const gid = gs[0].id
+                const rows = await db
+                    .select()
+                    .from(keywords)
+                    .where(and(eq(keywords.genreId, gid), eq(keywords.excluded, true)))
+                const list = rows.map(r => r.name).filter(Boolean)
+                if (list.length) {
+                    exclusionNote = `次のキーワードやそれに密接に関連する分野・話題は出題から除外してください（重複や言い換えも不可）: ${list.join(', ')}`
+                }
+            }
+        } catch (e) {
+            console.warn('failed to load excluded keywords', e)
+        }
+    }
+    const composed = [composePrompt(template), exclusionNote].filter(Boolean).join('\n\n')
     const system = systemRaw ? composePrompt(systemRaw) : undefined
     const questions = await generateQuestions({ genre, subgenre, topic, count, model, minCorrect, maxCorrect, prompt: composed, system, concurrency, choiceCount })
     return NextResponse.json({ questions })

@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp, jsonb, uniqueIndex } from 'drizzle-orm/pg-core'
+import { pgTable, serial, text, integer, timestamp, jsonb, uniqueIndex, boolean as pgBoolean } from 'drizzle-orm/pg-core'
 
 export const genres = pgTable('genres', {
     id: serial('id').primaryKey(),
@@ -59,6 +59,8 @@ export const keywords = pgTable(
         id: serial('id').primaryKey(),
         genreId: integer('genre_id').notNull().references(() => genres.id, { onDelete: 'cascade' }),
         name: text('name').notNull(),
+        // 除外フラグ（除外中のキーワードは問題生成時に回避する）
+        excluded: pgBoolean('excluded').notNull().default(false),
         createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
     },
     (t) => ({
