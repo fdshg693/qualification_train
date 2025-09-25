@@ -1,6 +1,7 @@
 import { QuestionSchema, type Question } from '@/lib/schema'
 import { createOpenAI } from '@ai-sdk/openai'
 import { generateObject } from 'ai'
+import { DEFAULT_SYSTEM_PROMPT } from '@/lib/default-prompts'
 
 // (Batch schema removed; we now always generate one-by-one for accuracy)
 
@@ -94,6 +95,14 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
         return Array.from(new Set(arr)).sort((a, b) => a - b)
     }
 
+    // Build a short context listing already generated questions to avoid duplication
+    function buildDedupContext(prevQuestions: string[], maxList = 30): string {
+        if (!prevQuestions.length) return ''
+        const list = prevQuestions.slice(-maxList)
+        const bullets = list.map((q, i) => `- (${i + 1}) ${q}`).join('\n')
+        return `これまでに生成済みの問題（重複回避用、最大${maxList}件）:\n${bullets}\n上記と「重複」や「ほぼ同一内容（言い換え）」「数字や名称だけを変えた類題」にならないように、新規性のある観点・表現で出題してください。`
+    }
+
     if (!apiKey) {
         // Mock: generate deterministic-ish set with sometimes multiple answers
         const base = [
@@ -139,11 +148,29 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
     const concurrency = Math.max(1, Math.min(4, Math.floor(params.concurrency ?? 2)))
     const results: (Question | undefined)[] = new Array(count)
 
-    const genOne = async (i: number) => {
+    const genOne = async (i: number, dedupContext: string) => {
         const { object } = await generateObject({
             model: openai(model),
-            system: (params.system && params.system.trim()) || `あなたは${choiceCount}択問題（複数正解可）を厳密なJSONで1問だけ生成します。各選択肢ごとに短い理由（正解/不正解のどちらでも）を explanations 配列で返してください（choices と同じ順序・同じ長さ）。`,
-            prompt: `${baseContext}\nこの1問の選択肢数は「${choiceCount}」にし、正解数は「ちょうど ${targetKs[i]} 個」にしてください。出力は Question スキーマのJSONのみ（余計な文字列なし）。`,
+            // より厳密な出力規約をシステム側で明示
+            system:
+                (params.system && params.system.trim()) ||
+                [
+                    DEFAULT_SYSTEM_PROMPT,
+                    // ここでは数的制約（選択肢数など）も念押し
+                    `choices はちょうど ${choiceCount} 個。explanations も同じ長さ・同じ順序。`
+                ].join('\n'),
+            // 問題固有の制約を明示（正解数・重複回避・出力制約）
+            prompt: [
+                baseContext,
+                dedupContext,
+                `この1問の選択肢数は「${choiceCount}」。正解数は「ちょうど ${targetKs[i]} 個」。`,
+                '必ず次の出力要件を満たしてください:',
+                `- choices の長さ: ${choiceCount}`,
+                `- explanations の長さ: ${choiceCount}（choices と同じ順序）`,
+                `- answerIndexes の長さ: ${targetKs[i]}、0..$　{choiceCount - 1} の整数・重複なし・昇順`,
+                '- JSON以外の文字（見出し・前置き・コードフェンス・補足文など）は一切出力しない',
+                '出力は Question スキーマに適合した JSON オブジェクトのみ。',
+            ].join('\n'),
             schema: QuestionSchema,
         })
         const enforced = {
@@ -159,10 +186,15 @@ export async function generateQuestions(params: GenerateParams): Promise<Questio
     // Process in chunks to cap concurrency
     for (let start = 0; start < count; start += concurrency) {
         const end = Math.min(count, start + concurrency)
+        const prevTitles = results
+            .slice(0, start)
+            .filter((q): q is Question => Boolean(q))
+            .map((q) => q.question)
+        const dedupContext = buildDedupContext(prevTitles)
         const batch = [] as Promise<void>[]
         for (let i = start; i < end; i++) {
             batch.push(
-                genOne(i).catch((e) => {
+                genOne(i, dedupContext).catch((e) => {
                     console.error('single generation failed', i, e)
                 })
             )

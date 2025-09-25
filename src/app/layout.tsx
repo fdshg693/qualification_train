@@ -21,6 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                                 <Link href="/saved" className="text-sm text-slate-700 hover:text-slate-900">保存済み</Link>
                                 <Link href="/practice" className="text-sm text-slate-700 hover:text-slate-900">ランダム練習</Link>
                                 <Link href="/admin/genres" className="text-sm text-slate-700 hover:text-slate-900">ジャンル管理</Link>
+                                <Link href="/admin/keywords" className="text-sm text-slate-700 hover:text-slate-900">キーワード管理</Link>
                                 <Link href="/admin/prompts" className="text-sm text-slate-700 hover:text-slate-900">プロンプト管理</Link>
                             </nav>
                         </div>
@@ -39,6 +40,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                                 <Link href="/saved" className="text-slate-600 hover:text-slate-900">保存済み</Link>
                                 <Link href="/practice" className="text-slate-600 hover:text-slate-900">ランダム練習</Link>
                                 <Link href="/admin/genres" className="text-slate-600 hover:text-slate-900">ジャンル管理</Link>
+                                <Link href="/admin/keywords" className="text-slate-600 hover:text-slate-900">キーワード管理</Link>
                                 <a
                                     href="https://github.com/fdshg693/qualification_train"
                                     target="_blank"

@@ -1,9 +1,12 @@
 'use server'
 
 import { db } from '@/db/client'
-import { questions, genres, subgenres, prompts } from '@/db/schema'
+import { questions, genres, subgenres, prompts, keywords } from '@/db/schema'
 import { eq, and, like, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
+import { z } from 'zod'
+import { createOpenAI } from '@ai-sdk/openai'
+import { generateObject } from 'ai'
 
 type SaveParams = {
     genre: string
@@ -137,24 +140,7 @@ export async function deleteSubgenre(id: number) {
 
 // ===== Prompts (テンプレート) =====
 const DEFAULT_PROMPT_NAME = 'default'
-const DEFAULT_PROMPT_TEMPLATE = `あなたはプロの出題者です。以下の条件を満たす多肢選択式の問題を作成してください。
-
-ジャンル: {genre}
-サブジャンル: {subgenre}
-トピック: {topic}
-問題数: {count}
-選択肢数（各問）: {choiceCount}
-正解数（各問）: {minCorrect}〜{maxCorrect}
-
-要件:
-- 問題文は日本語で簡潔に。
-- 選択肢は {choiceCount} 個、曖昧さを避ける。
-- 正解は複数でも可。
-- 初学者にも分かる短い解説を各選択肢ごとに付ける。
-`
-
-// デフォルトの system プロンプト（モデルへの基本指示）
-const DEFAULT_SYSTEM_PROMPT = 'あなたは多肢選択式問題（複数正解可）を厳密なJSONで生成する出題エンジンです。choices/explanations は同数、選択肢数は指示に従い、explanations は各選択肢の理由（正解/不正解いずれでも）を短く返してください。余計な文字列を含めないでください。'
+import { DEFAULT_PROMPT_TEMPLATE, DEFAULT_SYSTEM_PROMPT } from '@/lib/default-prompts'
 
 export async function getPrompt(name?: string) {
     const n = (name || DEFAULT_PROMPT_NAME).trim()
@@ -222,4 +208,79 @@ export async function deletePrompt(id: number) {
     await db.delete(prompts).where(eq(prompts.id, id))
     revalidatePath('/admin/prompts')
     revalidatePath('/')
+}
+
+// ===== Keywords (キーワード) =====
+export async function listKeywords(opts?: { genreId?: number }) {
+    const genreId = opts?.genreId
+    const rows = await db
+        .select()
+        .from(keywords)
+        .where(genreId ? eq(keywords.genreId, genreId) : undefined as any)
+        .orderBy(keywords.createdAt)
+    return rows
+}
+
+export async function createKeyword(genreId: number, name: string) {
+    if (!genreId || !name?.trim()) return
+    try {
+        await db.insert(keywords).values({ genreId, name: name.trim() })
+    } catch { /* ignore duplicates by unique index */ }
+    revalidatePath('/admin/keywords')
+}
+
+export async function updateKeyword(id: number, name: string) {
+    if (!id || !name?.trim()) return
+    await db.update(keywords).set({ name: name.trim() }).where(eq(keywords.id, id))
+    revalidatePath('/admin/keywords')
+}
+
+export async function deleteKeyword(id: number) {
+    if (!id) return
+    await db.delete(keywords).where(eq(keywords.id, id))
+    revalidatePath('/admin/keywords')
+}
+
+// AI によるキーワード自動生成（ジャンルをなるべく網羅）
+const KeywordsSchema = z.object({ keywords: z.array(z.string()).min(1).max(200) })
+
+export async function generateKeywords(params: { genreId: number; limit: number }) {
+    const { genreId } = params
+    const limit = Math.max(1, Math.min(200, Math.floor(params.limit || 20)))
+    if (!genreId) return [] as string[]
+    const gs = await db.select().from(genres).where(eq(genres.id, genreId))
+    if (!gs.length) return []
+    const genreName = gs[0].name
+    const apiKey = process.env.OPENAI_API_KEY
+    let list: string[] = []
+    if (!apiKey) {
+        // Mock: deterministic placeholders
+        list = Array.from({ length: limit }, (_, i) => `${genreName}キーワード${i + 1}`)
+    } else {
+        const openai = createOpenAI({ apiKey })
+        const { object } = await generateObject({
+            model: openai('gpt-4.1'),
+            system: 'あなたはジャンル内の網羅的な重要キーワードを抽出するアシスタントです。重複や言い換えは避け、短い名詞句で出力してください。出力はJSONのみ。',
+            prompt: [
+                `ジャンル: ${genreName}`,
+                `上限数: ${limit}`,
+                'ジャンル全体をなるべくカバーするように多様なトピックからキーワードを列挙してください。',
+                '各要素は1～5語程度の短い名詞句とし、JSONのみで返してください。キーは "keywords"、値は配列です。'
+            ].join('\n'),
+            schema: KeywordsSchema,
+        })
+        list = (object.keywords || []).slice(0, limit)
+    }
+    // 既存を取得して差分のみ追加
+    const existing = await db.select().from(keywords).where(eq(keywords.genreId, genreId))
+    const exSet = new Set(existing.map((k) => k.name))
+    const unique = list.map((s) => s.trim()).filter((s) => s && !exSet.has(s))
+    if (unique.length) {
+        // bulk insert; ignore duplicates
+        for (const name of unique) {
+            try { await db.insert(keywords).values({ genreId, name }) } catch {}
+        }
+        revalidatePath('/admin/keywords')
+    }
+    return list
 }

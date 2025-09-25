@@ -51,3 +51,20 @@ export const prompts = pgTable('prompts', {
 
 export type InsertPrompt = typeof prompts.$inferInsert
 export type SelectPrompt = typeof prompts.$inferSelect
+
+// ===== Keywords (genre-scoped keywords for coverage) =====
+export const keywords = pgTable(
+    'keywords',
+    {
+        id: serial('id').primaryKey(),
+        genreId: integer('genre_id').notNull().references(() => genres.id, { onDelete: 'cascade' }),
+        name: text('name').notNull(),
+        createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+    },
+    (t) => ({
+        keywordsGenreIdNameUnique: uniqueIndex('keywords_genre_id_name_unique').on(t.genreId, t.name),
+    })
+)
+
+export type InsertKeyword = typeof keywords.$inferInsert
+export type SelectKeyword = typeof keywords.$inferSelect
